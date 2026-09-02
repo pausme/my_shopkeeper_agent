@@ -92,7 +92,9 @@ class MetaKnowledgeService:
                 )
                 column_infos.append(column_info)
 
+        # 先清空旧元数据再写入，重复构建时整体覆盖而不是主键冲突
         async with self.meta_mysql_repository.session.begin():
+            await self.meta_mysql_repository.clear_table_and_column_infos()
             self.meta_mysql_repository.save_table_infos(table_infos)
             self.meta_mysql_repository.save_column_infos(column_infos)
 
@@ -193,8 +195,9 @@ class MetaKnowledgeService:
                 column_metric = ColumnMetric(column_id=column, metric_id=metric.name)
                 column_metrics.append(column_metric)
 
-        # 指标本身和字段关系要放在同一笔事务里，避免只写入其中一部分
+        # 指标本身和字段关系要放在同一笔事务里，且先清空旧数据保证覆盖式重建
         async with self.meta_mysql_repository.session.begin():
+            await self.meta_mysql_repository.clear_metric_infos()
             self.meta_mysql_repository.save_metric_infos(metric_infos)
             self.meta_mysql_repository.save_column_metrics(column_metrics)
 
