@@ -1,0 +1,471 @@
+# 问数链路评测集
+#
+# 每条用例走完整智能体链路（含真实 LLM 调用），将执行结果与 expect_sql 的
+# 结果集对比（默认忽略行序，ordered: true 时要求行序一致；数值统一保留两位小数）。
+#
+# 字段说明：
+#   id / category / question  必填
+#   expect_sql                标准答案 SQL（在 dw 库执行）
+#   history                   可选，多轮指代追问的前置对话
+#   ordered                   可选，结果是否要求按序（默认忽略顺序）
+#   smoke                     可选，true 时进入部署后冒烟评测子集（控制在 5 条内）
+#
+# 注意：教学数仓数据仅覆盖 2025-01-01 ~ 2025-03-31，时间类用例必须落在 Q1 内。
+
+# ========== 一、单表聚合 ==========
+- id: q001
+  category: 单表聚合
+  question: 统计订单总数
+  expect_sql: SELECT COUNT(*) AS 订单总数 FROM fact_order
+  smoke: true
+
+- id: q002
+  category: 单表聚合
+  question: 统计所有订单的销售总额
+  expect_sql: SELECT SUM(order_amount) AS 销售总额 FROM fact_order
+
+- id: q003
+  category: 单表聚合
+  question: 所有订单一共卖了多少件商品
+  expect_sql: SELECT SUM(order_quantity) AS 总销量 FROM fact_order
+
+- id: q004
+  category: 单表聚合
+  question: 平均每笔订单的金额是多少
+  expect_sql: SELECT AVG(order_amount) AS 平均订单金额 FROM fact_order
+
+- id: q005
+  category: 单表聚合
+  question: 华北地区一共有多少笔订单
+  expect_sql: |
+    SELECT COUNT(*) AS 订单数 FROM fact_order f
+    JOIN dim_region r ON f.region_id = r.region_id
+    WHERE r.region_name = '华北'
+
+- id: q006
+  category: 单表聚合
+  question: 华东地区的总销售额
+  expect_sql: |
+    SELECT SUM(order_amount) AS 销售总额 FROM fact_order f
+    JOIN dim_region r ON f.region_id = r.region_id
+    WHERE r.region_name = '华东'
+
+- id: q007
+  category: 单表聚合
+  question: 男客户的订单总数
+  expect_sql: |
+    SELECT COUNT(*) AS 订单数 FROM fact_order f
+    JOIN dim_customer c ON f.customer_id = c.customer_id
+    WHERE c.gender = '男'
+
+- id: q008
+  category: 单表聚合
+  question: 黄金会员的订单数量
+  expect_sql: |
+    SELECT COUNT(*) AS 订单数 FROM fact_order f
+    JOIN dim_customer c ON f.customer_id = c.customer_id
+    WHERE c.member_level = '黄金'
+
+- id: q009
+  category: 单表聚合
+  question: 每笔订单平均购买多少件商品
+  expect_sql: SELECT AVG(order_quantity) AS 平均购买数量 FROM fact_order
+
+# ========== 二、多表 Join ==========
+- id: q010
+  category: 多表Join
+  question: 统计各大区的订单数和销售额
+  expect_sql: |
+    SELECT r.region_name AS 大区, COUNT(*) AS 订单数, SUM(f.order_amount) AS 销售额
+    FROM fact_order f JOIN dim_region r ON f.region_id = r.region_id
+    GROUP BY r.region_name
+  smoke: true
+
+- id: q011
+  category: 多表Join
+  question: 各商品品类的总销售额是多少
+  expect_sql: |
+    SELECT p.category AS 品类, SUM(f.order_amount) AS 销售额
+    FROM fact_order f JOIN dim_product p ON f.product_id = p.product_id
+    GROUP BY p.category
+
+- id: q012
+  category: 多表Join
+  question: 按会员等级统计订单数和销售额
+  expect_sql: |
+    SELECT c.member_level AS 会员等级, COUNT(*) AS 订单数, SUM(f.order_amount) AS 销售额
+    FROM fact_order f JOIN dim_customer c ON f.customer_id = c.customer_id
+    GROUP BY c.member_level
+
+- id: q013
+  category: 多表Join
+  question: 各个省份的销售额分别是多少
+  expect_sql: |
+    SELECT r.province AS 省份, SUM(f.order_amount) AS 销售额
+    FROM fact_order f JOIN dim_region r ON f.region_id = r.region_id
+    GROUP BY r.province
+
+- id: q014
+  category: 多表Join
+  question: 各品牌的总销量
+  expect_sql: |
+    SELECT p.brand AS 品牌, SUM(f.order_quantity) AS 总销量
+    FROM fact_order f JOIN dim_product p ON f.product_id = p.product_id
+    GROUP BY p.brand
+
+- id: q015
+  category: 多表Join
+  question: 男性客户和女性客户的销售额分别是多少
+  expect_sql: |
+    SELECT c.gender AS 性别, SUM(f.order_amount) AS 销售额
+    FROM fact_order f JOIN dim_customer c ON f.customer_id = c.customer_id
+    GROUP BY c.gender
+
+- id: q016
+  category: 多表Join
+  question: 北京市的订单总金额
+  expect_sql: |
+    SELECT SUM(f.order_amount) AS 订单总金额
+    FROM fact_order f JOIN dim_region r ON f.region_id = r.region_id
+    WHERE r.province = '北京市'
+
+- id: q017
+  category: 多表Join
+  question: 广东省客户下了多少笔订单
+  expect_sql: |
+    SELECT COUNT(*) AS 订单数
+    FROM fact_order f JOIN dim_region r ON f.region_id = r.region_id
+    WHERE r.province = '广东省'
+
+- id: q018
+  category: 多表Join
+  question: 手机数码品类有多少笔订单，销售额是多少
+  expect_sql: |
+    SELECT COUNT(*) AS 订单数, SUM(f.order_amount) AS 销售额
+    FROM fact_order f JOIN dim_product p ON f.product_id = p.product_id
+    WHERE p.category = '手机数码'
+
+# ========== 三、指标口径 ==========
+- id: q019
+  category: 指标口径
+  question: 统计 GMV
+  expect_sql: SELECT SUM(order_amount) AS GMV FROM fact_order
+  smoke: true
+
+- id: q020
+  category: 指标口径
+  question: 华南地区的 GMV 是多少
+  expect_sql: |
+    SELECT SUM(f.order_amount) AS GMV FROM fact_order f
+    JOIN dim_region r ON f.region_id = r.region_id
+    WHERE r.region_name = '华南'
+
+- id: q021
+  category: 指标口径
+  question: 统计 AOV
+  expect_sql: SELECT AVG(order_amount) AS AOV FROM fact_order
+
+- id: q022
+  category: 指标口径
+  question: 全店的订单总额是多少
+  expect_sql: SELECT SUM(order_amount) AS 订单总额 FROM fact_order
+
+- id: q023
+  category: 指标口径
+  question: 2025 年 2 月的成交总额
+  expect_sql: |
+    SELECT SUM(order_amount) AS 成交总额 FROM fact_order
+    WHERE date_id BETWEEN '20250201' AND '20250228'
+
+- id: q024
+  category: 指标口径
+  question: 女性客户的平均订单金额
+  expect_sql: |
+    SELECT AVG(f.order_amount) AS 平均订单金额 FROM fact_order f
+    JOIN dim_customer c ON f.customer_id = c.customer_id
+    WHERE c.gender = '女'
+
+- id: q025
+  category: 指标口径
+  question: 鞋靴品类的 GMV
+  expect_sql: |
+    SELECT SUM(f.order_amount) AS GMV FROM fact_order f
+    JOIN dim_product p ON f.product_id = p.product_id
+    WHERE p.category = '鞋靴'
+
+- id: q026
+  category: 指标口径
+  question: 各大区的 AOV 分别是多少
+  expect_sql: |
+    SELECT r.region_name AS 大区, AVG(f.order_amount) AS AOV
+    FROM fact_order f JOIN dim_region r ON f.region_id = r.region_id
+    GROUP BY r.region_name
+
+- id: q027
+  category: 指标口径
+  question: 西南地区的订单总额
+  expect_sql: |
+    SELECT SUM(f.order_amount) AS 订单总额 FROM fact_order f
+    JOIN dim_region r ON f.region_id = r.region_id
+    WHERE r.region_name = '西南'
+
+# ========== 四、时间范围 ==========
+- id: q028
+  category: 时间范围
+  question: 2025 年 1 月的销售额
+  expect_sql: |
+    SELECT SUM(order_amount) AS 销售额 FROM fact_order
+    WHERE date_id BETWEEN '20250101' AND '20250131'
+
+- id: q029
+  category: 时间范围
+  question: 2025 年 2 月有多少笔订单
+  expect_sql: |
+    SELECT COUNT(*) AS 订单数 FROM fact_order
+    WHERE date_id BETWEEN '20250201' AND '20250228'
+
+- id: q030
+  category: 时间范围
+  question: 2025 年 3 月的总销量
+  expect_sql: |
+    SELECT SUM(order_quantity) AS 总销量 FROM fact_order
+    WHERE date_id BETWEEN '20250301' AND '20250331'
+
+- id: q031
+  category: 时间范围
+  question: 2025 年第一季度的销售总额
+  expect_sql: SELECT SUM(order_amount) AS 销售总额 FROM fact_order
+  smoke: true
+
+- id: q032
+  category: 时间范围
+  question: 2025 年 1 月各品类的销售额
+  expect_sql: |
+    SELECT p.category AS 品类, SUM(f.order_amount) AS 销售额
+    FROM fact_order f JOIN dim_product p ON f.product_id = p.product_id
+    WHERE f.date_id BETWEEN '20250101' AND '20250131'
+    GROUP BY p.category
+
+- id: q033
+  category: 时间范围
+  question: 2025 年 2 月华南地区的订单数
+  expect_sql: |
+    SELECT COUNT(*) AS 订单数 FROM fact_order f
+    JOIN dim_region r ON f.region_id = r.region_id
+    WHERE r.region_name = '华南' AND f.date_id BETWEEN '20250201' AND '20250228'
+
+- id: q034
+  category: 时间范围
+  question: 2025 年 3 月黄金会员的销售额
+  expect_sql: |
+    SELECT SUM(f.order_amount) AS 销售额 FROM fact_order f
+    JOIN dim_customer c ON f.customer_id = c.customer_id
+    WHERE c.member_level = '黄金' AND f.date_id BETWEEN '20250301' AND '20250331'
+
+- id: q035
+  category: 时间范围
+  question: 2025 年 1 月和 2 月合计有多少笔订单
+  expect_sql: |
+    SELECT COUNT(*) AS 订单数 FROM fact_order
+    WHERE date_id BETWEEN '20250101' AND '20250228'
+
+- id: q036
+  category: 时间范围
+  question: 2025 年第一季度各月份的销售额
+  expect_sql: |
+    SELECT MONTH(STR_TO_DATE(date_id, '%Y%m%d')) AS 月份, SUM(order_amount) AS 销售额
+    FROM fact_order
+    GROUP BY MONTH(STR_TO_DATE(date_id, '%Y%m%d'))
+
+# ========== 五、值域匹配 ==========
+- id: q037
+  category: 值域匹配
+  question: 上海市客户的订单数
+  expect_sql: |
+    SELECT COUNT(*) AS 订单数 FROM fact_order f
+    JOIN dim_region r ON f.region_id = r.region_id
+    WHERE r.province = '上海市'
+  smoke: true
+
+- id: q038
+  category: 值域匹配
+  question: 浙江省的销售额
+  expect_sql: |
+    SELECT SUM(f.order_amount) AS 销售额 FROM fact_order f
+    JOIN dim_region r ON f.region_id = r.region_id
+    WHERE r.province = '浙江省'
+
+- id: q039
+  category: 值域匹配
+  question: 耐克这个品牌的销量
+  expect_sql: |
+    SELECT SUM(f.order_quantity) AS 销量 FROM fact_order f
+    JOIN dim_product p ON f.product_id = p.product_id
+    WHERE p.brand = '耐克'
+
+- id: q040
+  category: 值域匹配
+  question: 华为品牌有多少笔订单
+  expect_sql: |
+    SELECT COUNT(*) AS 订单数 FROM fact_order f
+    JOIN dim_product p ON f.product_id = p.product_id
+    WHERE p.brand = '华为'
+
+- id: q041
+  category: 值域匹配
+  question: 蒙牛纯牛奶 250ml*12 卖了多少件
+  expect_sql: |
+    SELECT SUM(f.order_quantity) AS 销量 FROM fact_order f
+    JOIN dim_product p ON f.product_id = p.product_id
+    WHERE p.product_name = '蒙牛纯牛奶 250ml*12'
+
+- id: q042
+  category: 值域匹配
+  question: 服饰品类的总销售额
+  expect_sql: |
+    SELECT SUM(f.order_amount) AS 销售额 FROM fact_order f
+    JOIN dim_product p ON f.product_id = p.product_id
+    WHERE p.category = '服饰'
+
+- id: q043
+  category: 值域匹配
+  question: 铂金会员的订单数
+  expect_sql: |
+    SELECT COUNT(*) AS 订单数 FROM fact_order f
+    JOIN dim_customer c ON f.customer_id = c.customer_id
+    WHERE c.member_level = '铂金'
+
+- id: q044
+  category: 值域匹配
+  question: 四川省的订单总金额
+  expect_sql: |
+    SELECT SUM(f.order_amount) AS 订单总金额 FROM fact_order f
+    JOIN dim_region r ON f.region_id = r.region_id
+    WHERE r.province = '四川省'
+
+- id: q045
+  category: 值域匹配
+  question: iPhone 15 Pro 的销售额
+  expect_sql: |
+    SELECT SUM(f.order_amount) AS 销售额 FROM fact_order f
+    JOIN dim_product p ON f.product_id = p.product_id
+    WHERE p.product_name = 'iPhone 15 Pro'
+
+# ========== 六、指代追问 ==========
+- id: q046
+  category: 指代追问
+  question: 那华东呢
+  history:
+    - role: user
+      content: 统计华北地区的销售总额
+    - role: assistant
+      content: 查询完成，华北地区销售总额已返回。
+  expect_sql: |
+    SELECT SUM(f.order_amount) AS 销售总额 FROM fact_order f
+    JOIN dim_region r ON f.region_id = r.region_id
+    WHERE r.region_name = '华东'
+  smoke: true
+
+- id: q047
+  category: 指代追问
+  question: 再看看销售额
+  history:
+    - role: user
+      content: 按会员等级统计订单数
+    - role: assistant
+      content: 查询完成，各会员等级订单数已返回。
+  expect_sql: |
+    SELECT c.member_level AS 会员等级, SUM(f.order_amount) AS 销售额
+    FROM fact_order f JOIN dim_customer c ON f.customer_id = c.customer_id
+    GROUP BY c.member_level
+
+- id: q048
+  category: 指代追问
+  question: 2 月呢
+  history:
+    - role: user
+      content: 统计 2025 年 1 月的 GMV
+    - role: assistant
+      content: 查询完成，2025 年 1 月 GMV 已返回。
+  expect_sql: |
+    SELECT SUM(order_amount) AS GMV FROM fact_order
+    WHERE date_id BETWEEN '20250201' AND '20250228'
+
+- id: q049
+  category: 指代追问
+  question: 那鞋靴呢
+  history:
+    - role: user
+      content: 手机数码品类的总销售额是多少
+    - role: assistant
+      content: 查询完成，手机数码品类总销售额已返回。
+  expect_sql: |
+    SELECT SUM(f.order_amount) AS 销售额 FROM fact_order f
+    JOIN dim_product p ON f.product_id = p.product_id
+    WHERE p.category = '鞋靴'
+
+- id: q050
+  category: 指代追问
+  question: 黄金会员呢
+  history:
+    - role: user
+      content: 白银会员有多少笔订单
+    - role: assistant
+      content: 查询完成，白银会员订单数已返回。
+  expect_sql: |
+    SELECT COUNT(*) AS 订单数 FROM fact_order f
+    JOIN dim_customer c ON f.customer_id = c.customer_id
+    WHERE c.member_level = '黄金'
+
+- id: q051
+  category: 指代追问
+  question: 北京市呢
+  history:
+    - role: user
+      content: 统计上海市客户的订单数
+    - role: assistant
+      content: 查询完成，上海市客户订单数已返回。
+  expect_sql: |
+    SELECT COUNT(*) AS 订单数 FROM fact_order f
+    JOIN dim_region r ON f.region_id = r.region_id
+    WHERE r.province = '北京市'
+
+- id: q052
+  category: 指代追问
+  question: 只看手机数码
+  history:
+    - role: user
+      content: 华南地区各品类的销售额
+    - role: assistant
+      content: 查询完成，华南地区各品类销售额已返回。
+  expect_sql: |
+    SELECT SUM(f.order_amount) AS 销售额 FROM fact_order f
+    JOIN dim_region r ON f.region_id = r.region_id
+    JOIN dim_product p ON f.product_id = p.product_id
+    WHERE r.region_name = '华南' AND p.category = '手机数码'
+
+- id: q053
+  category: 指代追问
+  question: 华北的呢
+  history:
+    - role: user
+      content: 2025 年第一季度各大区的 GMV
+    - role: assistant
+      content: 查询完成，各大区 GMV 已返回。
+  expect_sql: |
+    SELECT SUM(f.order_amount) AS GMV FROM fact_order f
+    JOIN dim_region r ON f.region_id = r.region_id
+    WHERE r.region_name = '华北'
+
+- id: q054
+  category: 指代追问
+  question: 只看耐克
+  history:
+    - role: user
+      content: 统计各品牌的销量
+    - role: assistant
+      content: 查询完成，各品牌销量已返回。
+  expect_sql: |
+    SELECT SUM(f.order_quantity) AS 销量 FROM fact_order f
+    JOIN dim_product p ON f.product_id = p.product_id
+    WHERE p.brand = '耐克'
