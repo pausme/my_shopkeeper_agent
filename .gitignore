@@ -65,3 +65,6 @@ docker/embedding/
 
 # Claude zread
 /.zread/
+
+# Personal renovation TODO (kept local, not for the repo)
+/docs/TODO.md
