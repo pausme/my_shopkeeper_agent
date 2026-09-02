@@ -1,6 +1,6 @@
 /**
  * 智能体类型定义
- * 定义问数智能体前端使用的 SSE 事件、流程步骤和聊天消息类型
+ * 定义问数智能体前端使用的 SSE 事件、流程步骤、聊天消息和会话类型
  */
 export type ProgressStatus = "running" | "success" | "error";
 
@@ -26,6 +26,8 @@ export type StepState = {
   step: string;
   status: ProgressStatus;
   updatedAt: number;
+  /** 步骤首次进入 running 的时间戳，用于展示步骤耗时 */
+  startedAt?: number;
 };
 
 export type ChatMessage = {
@@ -37,4 +39,12 @@ export type ChatMessage = {
   steps?: StepState[];
   result?: unknown;
   error?: string;
+};
+
+export type Conversation = {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: ChatMessage[];
 };

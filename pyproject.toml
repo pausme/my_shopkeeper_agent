@@ -1,7 +1,7 @@
 [project]
-name = "shopkeeper-agent"
+name = "my-shopkeeper-agent"
 version = "0.1.0"
-description = "Add your description here"
+description = "基于 LangGraph 的电商问数智能体（个人二开版）：混合检索、SQL 生成校验修正闭环与单机自动部署"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -28,6 +28,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pre-commit>=4.3.0",
+    "pytest>=9.1.1",
     "ruff>=0.11.0",
 ]
 
@@ -35,9 +36,8 @@ dev = [
 line-length = 88
 target-version = "py314"
 
-[[tool.uv.index]]
-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
-default = true
+[tool.pytest.ini_options]
+pythonpath = ["."]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]

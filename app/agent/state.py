@@ -66,6 +66,7 @@ class DataAgentState(TypedDict):
     query: str  # 用户输入的查询
     keywords: list[str]  # 抽取的关键词
     extended_keywords: dict[str, list[str]]  # LLM 面向三路召回扩展的检索词
+    history: list[dict]  # 最近对话 [{"role": "user"|"assistant", "content": "..."}]，用于多轮指代
     retrieved_column_infos: list[ColumnInfo]  # 检索到的字段信息
     retrieved_metric_infos: list[MetricInfo]  # 检索到的指标信息
     retrieved_value_infos: list[ValueInfo]  # 检索到的取值信息
@@ -81,3 +82,22 @@ class DataAgentState(TypedDict):
 
     # SQL 修正重试计数：validate 校验失败进入 correct_sql 时累加，超过上限后走 fail_sql 终止
     sql_retry_count: int
+
+
+def format_history(history: list[dict] | None, max_messages: int = 6) -> str:
+    """把最近对话渲染成提示词可读的文本，超出的旧消息截断
+
+    返回空字符串表示没有历史（独立问题），调用方在提示词里以"无"占位。
+    """
+
+    if not history:
+        return ""
+
+    role_names = {"user": "用户", "assistant": "助手"}
+    lines = []
+    for message in history[-max_messages:]:
+        role = role_names.get(message.get("role", ""), None)
+        content = str(message.get("content", "")).strip()
+        if role and content:
+            lines.append(f"{role}：{content}")
+    return "\n".join(lines)

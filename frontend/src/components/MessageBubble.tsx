@@ -1,14 +1,20 @@
 /**
  * 聊天消息气泡组件
- * 组合展示用户问题、智能体回复、执行流程和结果表格
+ * 组合展示用户问题、智能体回复、执行流程、结果视图和失败重试入口
  */
-import { Bot, Copy, UserRound } from "lucide-react";
-import { ResultTable } from "./ResultTable";
+import { Bot, Copy, RotateCcw, UserRound } from "lucide-react";
+import { ResultView } from "./ResultView";
 import { StepRail } from "./StepRail";
 import { cn, formatTime, toClipboardText } from "../lib/format";
 import type { ChatMessage } from "../types/agent";
 
-export function MessageBubble({ message }: { message: ChatMessage }) {
+export function MessageBubble({
+  message,
+  onRetry,
+}: {
+  message: ChatMessage;
+  onRetry?: () => void;
+}) {
   const isUser = message.role === "user";
 
   const copy = async () => {
@@ -49,13 +55,24 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
           </div>
 
           {message.error && (
-            <div className="mt-3 border border-tomato/30 bg-tomato/10 px-3 py-2 text-sm text-tomato">
-              {message.error}
+            <div className="mt-3 flex items-start justify-between gap-3 border border-tomato/30 bg-tomato/10 px-3 py-2 text-sm text-tomato">
+              <span className="min-w-0 break-all">{message.error}</span>
+              {onRetry && (
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="flex shrink-0 items-center gap-1 border border-tomato/40 px-2 py-1 text-xs font-semibold text-tomato transition hover:bg-tomato/15"
+                  title="使用同一问题重新查询"
+                >
+                  <RotateCcw className="h-3 w-3" aria-hidden="true" />
+                  重试
+                </button>
+              )}
             </div>
           )}
 
           {!isUser && <StepRail steps={message.steps} />}
-          {!isUser && message.result !== undefined && <ResultTable data={message.result} />}
+          {!isUser && message.result !== undefined && <ResultView data={message.result} />}
 
           <div
             className={cn(

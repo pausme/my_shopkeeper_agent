@@ -81,7 +81,9 @@ jobs:
           set -e
           cd ~/shopkeeper-agent
           export PATH="$HOME/.local/bin:$PATH"
-          uv sync --frozen
+          # 服务器到 PyPI 官方源很慢，走腾讯内网镜像
+          export UV_DEFAULT_INDEX=http://mirrors.tencentyun.com/pypi/simple
+          uv sync --all-groups --frozen
           docker compose -f docker/docker-compose.server.yaml up -d
           sudo systemctl restart shopkeeper
           sleep 5

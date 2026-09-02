@@ -16,8 +16,8 @@ from langgraph.graph import StateGraph
 from app.agent.context import DataAgentContext
 from app.agent.nodes.add_extra_context import add_extra_context
 from app.agent.nodes.correct_sql import correct_sql
-from app.agent.nodes.extract_keywords import extract_keywords
 from app.agent.nodes.extend_keywords import extend_keywords
+from app.agent.nodes.extract_keywords import extract_keywords
 from app.agent.nodes.fail_sql import MAX_SQL_RETRIES, fail_sql
 from app.agent.nodes.filter_metric import filter_metric
 from app.agent.nodes.filter_table import filter_table

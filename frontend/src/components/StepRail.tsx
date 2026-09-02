@@ -1,8 +1,11 @@
 /**
  * 智能体执行流程图组件
- * 按 LangGraph 节点拓扑展示各步骤状态
+ * 按 LangGraph 节点拓扑展示各步骤状态与耗时
+ * 拓扑与后端 graph.py 保持一致：关键词抽取 → 检索词扩展 → 三路召回 → 合并 →
+ * 双路过滤 → 额外上下文 → 生成 → 校验 ⇄ 修正（重试 ≤3 次）→ 执行
  */
 import { Check, Circle, LoaderCircle, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { cn } from "../lib/format";
 import type { ProgressStatus, StepState } from "../types/agent";
 
@@ -17,40 +20,45 @@ type FlowNode = {
 
 const nodes: FlowNode[] = [
   { step: "抽取关键词", x: 410, y: 20 },
-  { step: "召回字段信息", x: 150, y: 112 },
-  { step: "召回指标信息", x: 410, y: 112 },
-  { step: "召回字段取值", x: 670, y: 112 },
-  { step: "合并召回信息", x: 410, y: 214 },
-  { step: "过滤指标信息", x: 290, y: 318 },
-  { step: "过滤表信息", x: 530, y: 318 },
-  { step: "增加额外上下文", x: 410, y: 422, w: 176 },
-  { step: "生成SQL", x: 410, y: 526 },
-  { step: "校验SQL", x: 410, y: 630 },
-  { step: "校正SQL", x: 670, y: 630 },
-  { step: "执行SQL", x: 410, y: 724 },
+  { step: "扩展检索词", x: 410, y: 116 },
+  { step: "召回字段信息", x: 150, y: 212 },
+  { step: "召回指标信息", x: 410, y: 212 },
+  { step: "召回字段取值", x: 670, y: 212 },
+  { step: "合并召回信息", x: 410, y: 308 },
+  { step: "过滤指标信息", x: 290, y: 404 },
+  { step: "过滤表信息", x: 530, y: 404 },
+  { step: "添加额外上下文", x: 410, y: 500, w: 176 },
+  { step: "生成SQL", x: 410, y: 596 },
+  { step: "校验SQL", x: 410, y: 692 },
+  { step: "校正SQL", x: 670, y: 692 },
+  { step: "执行SQL", x: 410, y: 788 },
 ];
 
 const connectors = [
-  "M410 60 L410 84 L150 84 L150 106",
-  "M410 60 L410 106",
-  "M410 60 L410 84 L670 84 L670 106",
-  "M150 152 L150 178 L410 178 L410 208",
-  "M410 152 L410 208",
-  "M670 152 L670 178 L410 178 L410 208",
-  "M410 254 L410 282 L290 282 L290 312",
-  "M410 254 L410 282 L530 282 L530 312",
-  "M290 358 L290 386 L410 386 L410 416",
-  "M530 358 L530 386 L410 386 L410 416",
-  "M410 462 L410 520",
-  "M410 566 L410 624",
-  "M410 670 L410 718",
-  "M488 650 L586 650",
-  "M670 670 L670 696 L410 696 L410 718",
+  "M410 60 L410 112",
+  "M410 156 L410 184 L150 184 L150 208",
+  "M410 156 L410 208",
+  "M410 156 L410 184 L670 184 L670 208",
+  "M150 252 L150 278 L410 278 L410 304",
+  "M410 252 L410 304",
+  "M670 252 L670 278 L410 278 L410 304",
+  "M410 348 L410 372 L290 372 L290 400",
+  "M410 348 L410 372 L530 372 L530 400",
+  "M290 444 L290 466 L410 466 L410 496",
+  "M530 444 L530 466 L410 466 L410 496",
+  "M410 540 L410 592",
+  "M410 636 L410 688",
+  "M410 732 L410 784",
+  "M488 712 L588 712",
+  // 校正 SQL 后回到校验节点重新校验，形成修正闭环
+  "M670 688 L670 670 L500 670 L500 712 L492 712",
 ];
 
 const branchLabels = [
-  { text: "有误", x: 530, y: 642 },
-  { text: "无误", x: 366, y: 704 },
+  { text: "无误", x: 358, y: 764 },
+  { text: "有误", x: 524, y: 700 },
+  { text: "重试 ≤3 次", x: 528, y: 660 },
+  { text: "超限则终止", x: 608, y: 745 },
 ];
 
 function getStatusMap(steps: StepState[]) {
@@ -62,6 +70,12 @@ function getStatusMap(steps: StepState[]) {
 
 function statusFor(step: string, map: Record<string, StepState>): FlowStatus {
   return map[step]?.status ?? "pending";
+}
+
+function formatElapsed(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "";
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m${seconds % 60}s`;
 }
 
 function NodeIcon({ status }: { status: FlowStatus }) {
@@ -80,7 +94,44 @@ function NodeIcon({ status }: { status: FlowStatus }) {
   return <Circle className="h-3.5 w-3.5" aria-hidden="true" />;
 }
 
-function FlowNodeCard({ node, status }: { node: FlowNode; status: FlowStatus }) {
+function NodeElapsed({
+  status,
+  state,
+  now,
+}: {
+  status: FlowStatus;
+  state?: StepState;
+  now: number;
+}) {
+  if (!state?.startedAt || status === "pending") return null;
+
+  const end = status === "running" ? now : state.updatedAt;
+  const seconds = Math.round((end - state.startedAt) / 1000);
+  if (seconds < 1) return null;
+
+  return (
+    <span
+      className={cn(
+        "shrink-0 font-mono text-[11px] font-normal",
+        status === "running" ? "text-brass" : "text-ink/40",
+      )}
+    >
+      {formatElapsed(seconds)}
+    </span>
+  );
+}
+
+function FlowNodeCard({
+  node,
+  status,
+  state,
+  now,
+}: {
+  node: FlowNode;
+  status: FlowStatus;
+  state?: StepState;
+  now: number;
+}) {
   const width = node.w ?? 156;
 
   return (
@@ -109,15 +160,25 @@ function FlowNodeCard({ node, status }: { node: FlowNode; status: FlowStatus }) 
           <NodeIcon status={status} />
         </span>
         <span className="min-w-0 flex-1 truncate">{node.step}</span>
+        <NodeElapsed status={status} state={state} now={now} />
       </div>
     </div>
   );
 }
 
 export function StepRail({ steps = [] }: { steps?: StepState[] }) {
-  if (steps.length === 0) return null;
-
   const statusMap = getStatusMap(steps);
+  const hasRunning = steps.some((item) => item.status === "running");
+
+  // 有步骤运行中时每秒刷新一次，驱动耗时实时跳动
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!hasRunning) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [hasRunning]);
+
+  if (steps.length === 0) return null;
 
   return (
     <section className="mt-4 border border-ink/10 bg-white/40 px-3 py-4 shadow-line">
@@ -127,10 +188,10 @@ export function StepRail({ steps = [] }: { steps?: StepState[] }) {
       </div>
 
       <div className="overflow-x-auto">
-        <div className="relative mx-auto h-[780px] w-[820px]">
+        <div className="relative mx-auto h-[840px] w-[820px]">
           <svg
             className="pointer-events-none absolute inset-0 h-full w-full"
-            viewBox="0 0 820 780"
+            viewBox="0 0 820 840"
             fill="none"
             aria-hidden="true"
           >
@@ -174,6 +235,8 @@ export function StepRail({ steps = [] }: { steps?: StepState[] }) {
               key={node.step}
               node={node}
               status={statusFor(node.step, statusMap)}
+              state={statusMap[node.step]}
+              now={now}
             />
           ))}
         </div>
