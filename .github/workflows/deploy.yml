@@ -50,6 +50,7 @@ jobs:
 
       - name: Write DEPLOY_SSH_KEY to file
         run: |
+          mkdir -p ~/.ssh
           install -m 600 /dev/null ~/.ssh/id_ed25519
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
           if ! head -1 ~/.ssh/id_ed25519 | grep -q "PRIVATE KEY"; then
