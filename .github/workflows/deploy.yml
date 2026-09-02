@@ -34,10 +34,31 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
 
-      - name: Setup SSH
+      - name: Check DEPLOY_HOST secret
+        run: |
+          if [ -z "${{ secrets.DEPLOY_HOST }}" ]; then
+            echo "::error::DEPLOY_HOST secret 缺失或为空（Settings → Secrets and variables → Actions）"
+            exit 1
+          fi
+
+      - name: Check DEPLOY_USER secret
+        run: |
+          if [ -z "${{ secrets.DEPLOY_USER }}" ]; then
+            echo "::error::DEPLOY_USER secret 缺失或为空（Settings → Secrets and variables → Actions）"
+            exit 1
+          fi
+
+      - name: Write DEPLOY_SSH_KEY to file
         run: |
           install -m 600 /dev/null ~/.ssh/id_ed25519
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          if ! head -1 ~/.ssh/id_ed25519 | grep -q "PRIVATE KEY"; then
+            echo "::error::DEPLOY_SSH_KEY 为空或不是私钥（第一行应为 -----BEGIN OPENSSH PRIVATE KEY-----）"
+            exit 1
+          fi
+
+      - name: Trust server host key
+        run: |
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Sync code and dist
