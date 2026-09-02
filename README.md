@@ -45,7 +45,7 @@
 | 元数据库 | MySQL / SQLAlchemy | 表、字段、指标及字段-指标依赖关系的权威来源 |
 | 语义召回 | Qdrant / bge-large-zh-v1.5（TEI） | 字段与指标向量检索 |
 | 值域召回 | Elasticsearch / IK | 字段真实取值的全文检索 |
-| 智能体编排 | LangGraph | 14 节点工作流：关键词抽取与 LLM 检索词扩展 → 三路并行召回 → 合并 → 双路过滤 → 生成/校验/修正重试闭环/执行（sqlglot 只读硬校验） |
+| 智能体编排 | LangGraph | 12 节点工作流：关键词抽取与 LLM 检索词扩展 → 三路并行召回 → 合并 → 上下文补全 → 过滤+SQL 生成单次调用 → 校验/修正重试闭环/执行（sqlglot 只读硬校验） |
 | 后端 | FastAPI + loguru | `/api/query` SSE 接口、request_id 链路日志 |
 | 前端 | React + Vite + Tailwind | 聊天式问数界面、节点进度条、结果表格 |
 | 发布 | uv / pnpm / GitHub Actions | 依赖管理、构建与自动部署 |

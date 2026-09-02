@@ -1,0 +1,26 @@
+name: eval
+
+# 全量评测（54 条，含真实 LLM 调用，约 15~60 分钟）：手动触发
+on:
+  workflow_dispatch:
+
+jobs:
+  full-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          install -m 600 /dev/null ~/.ssh/id_ed25519
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Run full evals on server
+        run: |
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'bash -s' <<'REMOTE'
+          set -e
+          cd ~/shopkeeper-agent
+          export PATH="$HOME/.local/bin:$PATH"
+          uv run python evals/run_evals.py
+          REMOTE

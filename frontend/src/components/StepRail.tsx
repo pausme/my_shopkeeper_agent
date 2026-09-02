@@ -25,13 +25,11 @@ const nodes: FlowNode[] = [
   { step: "召回指标信息", x: 410, y: 212 },
   { step: "召回字段取值", x: 670, y: 212 },
   { step: "合并召回信息", x: 410, y: 308 },
-  { step: "过滤指标信息", x: 290, y: 404 },
-  { step: "过滤表信息", x: 530, y: 404 },
-  { step: "添加额外上下文", x: 410, y: 500, w: 176 },
-  { step: "生成SQL", x: 410, y: 596 },
-  { step: "校验SQL", x: 410, y: 692 },
-  { step: "校正SQL", x: 670, y: 692 },
-  { step: "执行SQL", x: 410, y: 788 },
+  { step: "添加额外上下文", x: 410, y: 404, w: 176 },
+  { step: "生成SQL", x: 410, y: 500 },
+  { step: "校验SQL", x: 410, y: 596 },
+  { step: "校正SQL", x: 670, y: 596 },
+  { step: "执行SQL", x: 410, y: 692 },
 ];
 
 const connectors = [
@@ -42,23 +40,20 @@ const connectors = [
   "M150 252 L150 278 L410 278 L410 304",
   "M410 252 L410 304",
   "M670 252 L670 278 L410 278 L410 304",
-  "M410 348 L410 372 L290 372 L290 400",
-  "M410 348 L410 372 L530 372 L530 400",
-  "M290 444 L290 466 L410 466 L410 496",
-  "M530 444 L530 466 L410 466 L410 496",
+  "M410 348 L410 400",
+  "M410 444 L410 496",
   "M410 540 L410 592",
   "M410 636 L410 688",
-  "M410 732 L410 784",
-  "M488 712 L588 712",
+  "M488 616 L588 616",
   // 校正 SQL 后回到校验节点重新校验，形成修正闭环
-  "M670 688 L670 670 L500 670 L500 712 L492 712",
+  "M670 592 L670 574 L500 574 L500 616 L492 616",
 ];
 
 const branchLabels = [
-  { text: "无误", x: 358, y: 764 },
-  { text: "有误", x: 524, y: 700 },
-  { text: "重试 ≤3 次", x: 528, y: 660 },
-  { text: "超限则终止", x: 608, y: 745 },
+  { text: "无误", x: 358, y: 668 },
+  { text: "有误", x: 524, y: 604 },
+  { text: "重试 ≤3 次", x: 528, y: 564 },
+  { text: "超限则终止", x: 608, y: 649 },
 ];
 
 function getStatusMap(steps: StepState[]) {
@@ -188,10 +183,10 @@ export function StepRail({ steps = [] }: { steps?: StepState[] }) {
       </div>
 
       <div className="overflow-x-auto">
-        <div className="relative mx-auto h-[840px] w-[820px]">
+        <div className="relative mx-auto h-[744px] w-[820px]">
           <svg
             className="pointer-events-none absolute inset-0 h-full w-full"
-            viewBox="0 0 820 840"
+            viewBox="0 0 820 744"
             fill="none"
             aria-hidden="true"
           >

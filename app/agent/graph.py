@@ -3,8 +3,8 @@
 
 使用 LangGraph 把问数智能体的各个节点串成一条可观测的执行链路
 当前链路已经落地关键词抽取和多路召回，字段和指标走 Qdrant 向量检索，字段取值走 ES 全文检索
-整体流程先抽取用户问题关键词并用 LLM 面向三路召回统一扩展检索词，再并行召回字段 字段取值和指标信息，
-随后合并召回结果 过滤候选表和指标 补充额外上下文，最后生成 校验 修正并执行 SQL
+整体流程：抽取关键词并用 LLM 统一扩展检索词 -> 并行三路召回 -> 合并补齐上下文 ->
+补充日期与数据库环境 -> 一次调用完成候选过滤与 SQL 生成 -> 校验 执行
 SQL 校验失败会循环修正（上限 MAX_SQL_RETRIES 次），重试耗尽则走 fail_sql 终止并返回错误
 """
 
@@ -19,8 +19,6 @@ from app.agent.nodes.correct_sql import correct_sql
 from app.agent.nodes.extend_keywords import extend_keywords
 from app.agent.nodes.extract_keywords import extract_keywords
 from app.agent.nodes.fail_sql import MAX_SQL_RETRIES, fail_sql
-from app.agent.nodes.filter_metric import filter_metric
-from app.agent.nodes.filter_table import filter_table
 from app.agent.nodes.generate_sql import generate_sql
 from app.agent.nodes.merge_retrieved_info import merge_retrieved_info
 from app.agent.nodes.recall_column import recall_column
@@ -52,8 +50,6 @@ graph_builder.add_node("recall_column", recall_column)
 graph_builder.add_node("recall_value", recall_value)
 graph_builder.add_node("recall_metric", recall_metric)
 graph_builder.add_node("merge_retrieved_info", merge_retrieved_info)
-graph_builder.add_node("filter_metric", filter_metric)
-graph_builder.add_node("filter_table", filter_table)
 graph_builder.add_node("add_extra_context", add_extra_context)
 graph_builder.add_node("generate_sql", generate_sql)
 graph_builder.add_node("validate_sql", validate_sql)
@@ -75,13 +71,9 @@ graph_builder.add_edge("recall_column", "merge_retrieved_info")
 graph_builder.add_edge("recall_value", "merge_retrieved_info")
 graph_builder.add_edge("recall_metric", "merge_retrieved_info")
 
-# 合并后的候选信息继续拆成表过滤和指标过滤两条线
-graph_builder.add_edge("merge_retrieved_info", "filter_table")
-graph_builder.add_edge("merge_retrieved_info", "filter_metric")
-
-# 表和指标都过滤完成后，统一补充生成 SQL 所需的上下文
-graph_builder.add_edge("filter_table", "add_extra_context")
-graph_builder.add_edge("filter_metric", "add_extra_context")
+# 合并后的候选上下文直接进入额外上下文补全；候选过滤与 SQL 生成
+# 已合并进 generate_sql 的同一次 LLM 调用，减少串行等待
+graph_builder.add_edge("merge_retrieved_info", "add_extra_context")
 graph_builder.add_edge("add_extra_context", "generate_sql")
 graph_builder.add_edge("generate_sql", "validate_sql")
 
