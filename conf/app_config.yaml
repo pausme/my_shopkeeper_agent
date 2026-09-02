@@ -39,6 +39,6 @@ es:
   index_name: data_agent
 
 llm:
-  model_name: Pro/zai-org/GLM-5.1
+  model_name: ${oc.env:LLM_MODEL_NAME,Pro/zai-org/GLM-5.1}
   api_key: ${oc.env:LLM_API_KEY}
-  base_url: https://api.siliconflow.cn/v1
+  base_url: ${oc.env:LLM_BASE_URL,https://api.siliconflow.cn/v1}
