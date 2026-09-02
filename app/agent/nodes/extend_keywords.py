@@ -32,7 +32,8 @@ async def extend_keywords(state: DataAgentState, runtime: Runtime[DataAgentConte
     writer({"type": "progress", "step": step, "status": "running"})
 
     try:
-        query = state["query"]
+        # 优先消费改写后的独立问题；history 保留为辅助上下文
+        query = state.get("rewritten_query") or state["query"]
         history_text = format_history(state.get("history")) or "无"
 
         prompt = PromptTemplate(

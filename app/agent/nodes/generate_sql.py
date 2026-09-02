@@ -32,7 +32,8 @@ async def generate_sql(state: DataAgentState, runtime: Runtime[DataAgentContext]
         metric_infos = state["metric_infos"]
         date_info = state["date_info"]
         db_info = state["db_info"]
-        query = state["query"]
+        # 生成消费改写后的独立问题（无历史时等于原问题），避免省略式追问直接进提示词
+        query = state.get("rewritten_query") or state["query"]
         history_text = format_history(state.get("history")) or "无"
 
         prompt = PromptTemplate(

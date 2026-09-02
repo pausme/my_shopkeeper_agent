@@ -64,6 +64,7 @@ class DataAgentState(TypedDict):
     """一次问数链路中的核心状态"""
 
     query: str  # 用户输入的查询
+    rewritten_query: str  # 结合对话历史改写后的独立问题（无历史时等于 query）
     keywords: list[str]  # 抽取的关键词
     extended_keywords: dict[str, list[str]]  # LLM 面向三路召回扩展的检索词
     history: list[dict]  # 最近对话 [{"role": "user"|"assistant", "content": "..."}]，用于多轮指代

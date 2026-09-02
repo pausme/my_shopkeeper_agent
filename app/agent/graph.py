@@ -3,8 +3,8 @@
 
 使用 LangGraph 把问数智能体的各个节点串成一条可观测的执行链路
 当前链路已经落地关键词抽取和多路召回，字段和指标走 Qdrant 向量检索，字段取值走 ES 全文检索
-整体流程：抽取关键词并用 LLM 统一扩展检索词 -> 并行三路召回 -> 合并补齐上下文 ->
-补充日期与数据库环境 -> 一次调用完成候选过滤与 SQL 生成 -> 校验 执行
+整体流程：结合历史改写追问 -> 抽取关键词并用 LLM 统一扩展检索词 -> 并行三路召回 ->
+合并补齐上下文 -> 补充日期与数据库环境 -> 一次调用完成候选过滤与 SQL 生成 -> 校验 执行
 SQL 校验失败会循环修正（上限 MAX_SQL_RETRIES 次），重试耗尽则走 fail_sql 终止并返回错误
 """
 
@@ -24,6 +24,7 @@ from app.agent.nodes.merge_retrieved_info import merge_retrieved_info
 from app.agent.nodes.recall_column import recall_column
 from app.agent.nodes.recall_metric import recall_metric
 from app.agent.nodes.recall_value import recall_value
+from app.agent.nodes.rewrite_question import rewrite_question
 from app.agent.nodes.run_sql import run_sql
 from app.agent.nodes.validate_sql import validate_sql
 from app.agent.state import DataAgentState
@@ -44,6 +45,7 @@ from app.repositories.qdrant.metric_qdrant_repository import MetricQdrantReposit
 graph_builder = StateGraph(state_schema=DataAgentState, context_schema=DataAgentContext)
 
 # 注册节点：每个节点负责问数链路中的一个清晰步骤
+graph_builder.add_node("rewrite_question", rewrite_question)
 graph_builder.add_node("extract_keywords", extract_keywords)
 graph_builder.add_node("extend_keywords", extend_keywords)
 graph_builder.add_node("recall_column", recall_column)
@@ -57,8 +59,9 @@ graph_builder.add_node("correct_sql", correct_sql)
 graph_builder.add_node("fail_sql", fail_sql)
 graph_builder.add_node("run_sql", run_sql)
 
-# 从用户问题开始，先抽取关键词，再用 LLM 面向三路召回统一扩展检索词
-graph_builder.add_edge(START, "extract_keywords")
+# 从用户问题开始：先结合历史把追问改写成独立问题，再抽取关键词并扩展检索词
+graph_builder.add_edge(START, "rewrite_question")
+graph_builder.add_edge("rewrite_question", "extract_keywords")
 graph_builder.add_edge("extract_keywords", "extend_keywords")
 
 # 检索词扩展后并行进入三类召回，分别面向字段 字段值和业务指标
