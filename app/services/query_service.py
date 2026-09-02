@@ -25,6 +25,10 @@ from app.repositories.qdrant.metric_qdrant_repository import MetricQdrantReposit
 CACHE_TTL_SECONDS = 600
 CACHE_MAX_ENTRIES = 50
 
+# 模块级缓存：每个请求都会通过依赖注入新建 QueryService 实例，
+# 缓存必须放在模块级才能跨请求复用
+_query_cache: dict[str, tuple[float, list[dict]]] = {}
+
 
 class QueryService:
     """封装一次问数查询所需的业务编排逻辑"""
@@ -49,17 +53,18 @@ class QueryService:
         self.value_es_repository = value_es_repository
 
         # 进程内查询缓存：query 文本 -> (过期时间戳, SSE 事件对象列表)
-        self._cache: dict[str, tuple[float, list[dict]]] = {}
 
     def _cache_get(self, query: str) -> list[dict] | None:
         """命中未过期的缓存时返回历史事件，并顺手清理过期条目"""
 
         now = time.monotonic()
-        expired = [key for key, (deadline, _) in self._cache.items() if deadline <= now]
+        expired = [
+            key for key, (deadline, _) in _query_cache.items() if deadline <= now
+        ]
         for key in expired:
-            self._cache.pop(key, None)
+            _query_cache.pop(key, None)
 
-        entry = self._cache.get(query)
+        entry = _query_cache.get(query)
         if entry is None:
             return None
         return entry[1]
@@ -67,9 +72,9 @@ class QueryService:
     def _cache_put(self, query: str, events: list[dict]):
         """仅缓存成功拿到结果的查询；超量时按插入顺序淘汰最早的条目"""
 
-        self._cache[query] = (time.monotonic() + CACHE_TTL_SECONDS, events)
-        while len(self._cache) > CACHE_MAX_ENTRIES:
-            self._cache.pop(next(iter(self._cache)))
+        _query_cache[query] = (time.monotonic() + CACHE_TTL_SECONDS, events)
+        while len(_query_cache) > CACHE_MAX_ENTRIES:
+            _query_cache.pop(next(iter(_query_cache)))
 
     async def query(self, query: str, history: list[dict] | None = None):
         """执行一次问数工作流，并逐段产出 SSE 消息"""
