@@ -1,13 +1,16 @@
 """
 SQL 校验节点
 
-负责在真正执行查询前，用数据库解析一次生成的 SQ
+负责在真正执行查询前校验生成的 SQL：
+先用 sqlglot 做只读校验（非单条 SELECT 直接判失败，让修正分支重写），
+再把 SQL 交给数据库 explain 解析一次。
 校验结果不在这里决定流程走向，而是通过 state["error"] 交给 graph.py 的条件边判断
 """
 
 from langgraph.runtime import Runtime
 
 from app.agent.context import DataAgentContext
+from app.agent.sql_guard import validate_readonly
 from app.agent.state import DataAgentState
 from app.core.log import logger
 from app.repositories.mysql.dw.dw_mysql_repository import DWMySQLRepository
@@ -23,6 +26,13 @@ async def validate_sql(state: DataAgentState, runtime: Runtime[DataAgentContext]
     try:
         # 读取 generate_sql 或 correct_sql 写入状态的候选 SQL
         sql = state["sql"]
+
+        # 第一道软校验：语法层面拒绝非只读语句，交由修正分支重写而不是放行
+        guard_error = validate_readonly(sql)
+        if guard_error is not None:
+            writer({"type": "progress", "step": step, "status": "success"})
+            logger.info(f"SQL只读校验未通过：{guard_error}")
+            return {"error": guard_error}
 
         # SQL 可用性必须交给真实数仓判断，这里从运行时上下文取 DW Repository
         dw_mysql_repository: DWMySQLRepository = runtime.context["dw_mysql_repository"]

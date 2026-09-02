@@ -65,6 +65,7 @@ class DataAgentState(TypedDict):
 
     query: str  # 用户输入的查询
     keywords: list[str]  # 抽取的关键词
+    extended_keywords: dict[str, list[str]]  # LLM 面向三路召回扩展的检索词
     retrieved_column_infos: list[ColumnInfo]  # 检索到的字段信息
     retrieved_metric_infos: list[MetricInfo]  # 检索到的指标信息
     retrieved_value_infos: list[ValueInfo]  # 检索到的取值信息
@@ -77,3 +78,6 @@ class DataAgentState(TypedDict):
     sql: str  # 生成或校正后的SQL
 
     error: str  # 校验SQL时出现的错误信息
+
+    # SQL 修正重试计数：validate 校验失败进入 correct_sql 时累加，超过上限后走 fail_sql 终止
+    sql_retry_count: int

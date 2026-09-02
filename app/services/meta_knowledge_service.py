@@ -8,9 +8,9 @@
 以及指标入库和指标向量索引构建逻辑
 """
 
-import uuid
 from dataclasses import asdict
 from pathlib import Path
+from uuid import NAMESPACE_URL, uuid5
 
 from langchain_huggingface import HuggingFaceEndpointEmbeddings
 from omegaconf import OmegaConf
@@ -105,27 +105,17 @@ class MetaKnowledgeService:
         points: list[dict] = []
         for column_info in column_infos:
             # 一个字段不会只生成一个向量点，而是把名字 描述 别名都拆开建立语义入口
-            points.append(
-                {
-                    "id": uuid.uuid4(),
-                    "embedding_text": column_info.name,
-                    "payload": asdict(column_info),
-                }
+            # point id 由 column_id + 文本确定性生成：重复构建时按 id 覆盖旧点，而不是无限累积
+            embedding_texts = [column_info.name, column_info.description] + list(
+                column_info.alias
             )
-
-            points.append(
-                {
-                    "id": uuid.uuid4(),
-                    "embedding_text": column_info.description,
-                    "payload": asdict(column_info),
-                }
-            )
-
-            for alia in column_info.alias:
+            for embedding_text in embedding_texts:
                 points.append(
                     {
-                        "id": uuid.uuid4(),
-                        "embedding_text": alia,
+                        "id": uuid5(
+                            NAMESPACE_URL, f"column:{column_info.id}:{embedding_text}"
+                        ),
+                        "embedding_text": embedding_text,
                         "payload": asdict(column_info),
                     }
                 )
@@ -217,27 +207,17 @@ class MetaKnowledgeService:
         points: list[dict] = []
         for metric_info in metric_infos:
             # 和字段一样，一个指标也会拆成名字 描述 别名这几类语义入口
-            points.append(
-                {
-                    "id": uuid.uuid4(),
-                    "embedding_text": metric_info.name,
-                    "payload": asdict(metric_info),
-                }
+            # point id 同样确定性生成，保证重复构建幂等
+            embedding_texts = [metric_info.name, metric_info.description] + list(
+                metric_info.alias
             )
-
-            points.append(
-                {
-                    "id": uuid.uuid4(),
-                    "embedding_text": metric_info.description,
-                    "payload": asdict(metric_info),
-                }
-            )
-
-            for alia in metric_info.alias:
+            for embedding_text in embedding_texts:
                 points.append(
                     {
-                        "id": uuid.uuid4(),
-                        "embedding_text": alia,
+                        "id": uuid5(
+                            NAMESPACE_URL, f"metric:{metric_info.id}:{embedding_text}"
+                        ),
+                        "embedding_text": embedding_text,
                         "payload": asdict(metric_info),
                     }
                 )

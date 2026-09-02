@@ -3,8 +3,9 @@
 
 使用 LangGraph 把问数智能体的各个节点串成一条可观测的执行链路
 当前链路已经落地关键词抽取和多路召回，字段和指标走 Qdrant 向量检索，字段取值走 ES 全文检索
-整体流程先抽取用户问题关键词，再并行召回字段 字段取值和指标信息，
+整体流程先抽取用户问题关键词并用 LLM 面向三路召回统一扩展检索词，再并行召回字段 字段取值和指标信息，
 随后合并召回结果 过滤候选表和指标 补充额外上下文，最后生成 校验 修正并执行 SQL
+SQL 校验失败会循环修正（上限 MAX_SQL_RETRIES 次），重试耗尽则走 fail_sql 终止并返回错误
 """
 
 import asyncio
@@ -16,6 +17,8 @@ from app.agent.context import DataAgentContext
 from app.agent.nodes.add_extra_context import add_extra_context
 from app.agent.nodes.correct_sql import correct_sql
 from app.agent.nodes.extract_keywords import extract_keywords
+from app.agent.nodes.extend_keywords import extend_keywords
+from app.agent.nodes.fail_sql import MAX_SQL_RETRIES, fail_sql
 from app.agent.nodes.filter_metric import filter_metric
 from app.agent.nodes.filter_table import filter_table
 from app.agent.nodes.generate_sql import generate_sql
@@ -44,6 +47,7 @@ graph_builder = StateGraph(state_schema=DataAgentState, context_schema=DataAgent
 
 # 注册节点：每个节点负责问数链路中的一个清晰步骤
 graph_builder.add_node("extract_keywords", extract_keywords)
+graph_builder.add_node("extend_keywords", extend_keywords)
 graph_builder.add_node("recall_column", recall_column)
 graph_builder.add_node("recall_value", recall_value)
 graph_builder.add_node("recall_metric", recall_metric)
@@ -54,15 +58,17 @@ graph_builder.add_node("add_extra_context", add_extra_context)
 graph_builder.add_node("generate_sql", generate_sql)
 graph_builder.add_node("validate_sql", validate_sql)
 graph_builder.add_node("correct_sql", correct_sql)
+graph_builder.add_node("fail_sql", fail_sql)
 graph_builder.add_node("run_sql", run_sql)
 
-# 从用户问题开始，先抽取关键词作为后续检索的基础
+# 从用户问题开始，先抽取关键词，再用 LLM 面向三路召回统一扩展检索词
 graph_builder.add_edge(START, "extract_keywords")
+graph_builder.add_edge("extract_keywords", "extend_keywords")
 
-# 关键词抽取后并行进入三类召回，分别面向字段 字段值和业务指标
-graph_builder.add_edge("extract_keywords", "recall_column")
-graph_builder.add_edge("extract_keywords", "recall_value")
-graph_builder.add_edge("extract_keywords", "recall_metric")
+# 检索词扩展后并行进入三类召回，分别面向字段 字段值和业务指标
+graph_builder.add_edge("extend_keywords", "recall_column")
+graph_builder.add_edge("extend_keywords", "recall_value")
+graph_builder.add_edge("extend_keywords", "recall_metric")
 
 # 三路召回都完成后，再进入统一的信息合并节点
 graph_builder.add_edge("recall_column", "merge_retrieved_info")
@@ -79,13 +85,25 @@ graph_builder.add_edge("filter_metric", "add_extra_context")
 graph_builder.add_edge("add_extra_context", "generate_sql")
 graph_builder.add_edge("generate_sql", "validate_sql")
 
-# SQL 校验通过就直接执行，校验失败则先进入修正节点
+# SQL 校验通过直接执行；失败且未达重试上限则修正后重新校验；重试耗尽走 fail_sql 终止
+def route_after_validate(state: DataAgentState) -> str:
+    """根据校验错误和已修正次数决定下一步走向"""
+
+    if state.get("error") is None:
+        return "run_sql"
+    if state.get("sql_retry_count", 0) >= MAX_SQL_RETRIES:
+        return "fail_sql"
+    return "correct_sql"
+
+
 graph_builder.add_conditional_edges(
     source="validate_sql",
-    path=lambda state: "run_sql" if state["error"] is None else "correct_sql",
-    path_map={"run_sql": "run_sql", "correct_sql": "correct_sql"},
+    path=route_after_validate,
+    path_map={"run_sql": "run_sql", "correct_sql": "correct_sql", "fail_sql": "fail_sql"},
 )
-graph_builder.add_edge("correct_sql", "run_sql")
+# 修正后的 SQL 回到校验节点重新校验，形成闭环；fail_sql 只报错终止，不执行
+graph_builder.add_edge("correct_sql", "validate_sql")
+graph_builder.add_edge("fail_sql", END)
 graph_builder.add_edge("run_sql", END)
 
 # 编译后的 graph 是对外使用的 Agent 执行入口
