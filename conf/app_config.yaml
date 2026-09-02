@@ -10,17 +10,17 @@ logging:
     level: INFO
 
 db_meta:
-  host: localhost
-  port: 3306
-  user: didilili
-  password: dili123
+  host: ${oc.env:DB_HOST,localhost}
+  port: ${oc.env:DB_PORT,3306}
+  user: ${oc.env:DB_USER,didilili}
+  password: ${oc.env:DB_PASSWORD,dili123}
   database: meta
 
 db_dw:
-  host: localhost
-  port: 3306
-  user: didilili
-  password: dili123
+  host: ${oc.env:DB_HOST,localhost}
+  port: ${oc.env:DB_PORT,3306}
+  user: ${oc.env:DB_USER,didilili}
+  password: ${oc.env:DB_PASSWORD,dili123}
   database: dw
 
 qdrant:

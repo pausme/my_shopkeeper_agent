@@ -59,3 +59,9 @@ Thumbs.db
 
 # Local TEI embedding model files (large)
 docker/embedding/
+
+# App runtime logs
+/logs/
+
+# Claude zread
+/.zread/

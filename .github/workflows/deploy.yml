@@ -1,0 +1,68 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 同一时间只允许一个部署任务排队执行，避免并发写服务器
+concurrency:
+  group: deploy-server
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Setup SSH
+        run: |
+          install -m 600 /dev/null ~/.ssh/id_ed25519
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync code and dist
+        run: |
+          rsync -az \
+            --exclude .git \
+            --exclude .venv \
+            --exclude __pycache__ \
+            --exclude logs \
+            --exclude .env \
+            --exclude docker/.env \
+            --exclude docker/embedding \
+            --exclude frontend/node_modules \
+            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/shopkeeper-agent/"
+
+      - name: Apply and restart
+        run: |
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'bash -s' <<'REMOTE'
+          set -e
+          cd ~/shopkeeper-agent
+          export PATH="$HOME/.local/bin:$PATH"
+          uv sync --frozen
+          docker compose -f docker/docker-compose.server.yaml up -d
+          sudo systemctl restart shopkeeper
+          sleep 5
+          curl -sf http://127.0.0.1:8000/docs -o /dev/null
+          echo "DEPLOY_OK"
+          REMOTE
