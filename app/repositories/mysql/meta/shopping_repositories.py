@@ -12,6 +12,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.shopping import (
+    ShoppingEventLogMySQL,
     ShoppingFeedbackMySQL,
     ShoppingMessageMySQL,
     ShoppingRecommendationMySQL,
@@ -150,6 +151,26 @@ class ShoppingSessionRepository:
         return recommendation_id
 
     # ---------- 反馈 ----------
+
+    async def save_event(
+        self,
+        session_id: str,
+        message_id: str | None,
+        user_id: str | None,
+        event_type: str,
+        event_data: dict | None = None,
+    ) -> None:
+        """写入导购埋点事件（append-only，失败不影响主链路）"""
+
+        self.session.add(
+            ShoppingEventLogMySQL(
+                session_id=session_id,
+                message_id=message_id,
+                user_id=user_id,
+                event_type=event_type,
+                event_data_json=event_data or {},
+            )
+        )
 
     async def save_feedback(
         self,

@@ -38,10 +38,13 @@ async def lifespan(app: FastAPI):
 
         logger.warning(f"rerank 服务初始化失败，召回精排将回退原始排序：{e}")
 
-    # 自动建表：用户/会话/消息三张业务表不存在时创建（已存在则跳过，不影响数据）
+    # 自动建表：显式导入全部模型模块，确保 metadata 注册完整后再 create_all
+    # （仅靠业务模块的 import 链隐式注册，重构时容易漏表）
+    import app.models.conversation  # noqa: F401
+    import app.models.product  # noqa: F401
+    import app.models.shopping  # noqa: F401
+    import app.models.user  # noqa: F401
     from app.models.base import Base
-    from app.models.conversation import ConversationMySQL, MessageMySQL  # noqa: F401
-    from app.models.user import UserMySQL  # noqa: F401
 
     async with meta_mysql_client_manager.engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
