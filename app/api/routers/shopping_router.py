@@ -50,7 +50,14 @@ class FeedbackSchema(BaseModel):
     session_id: str
     message_id: str | None = None
     feedback_type: Literal[
-        "helpful", "unhelpful", "not_accurate", "too_expensive", "too_few", "not_understand"
+        # PRD 9.4 反馈六项
+        "helpful",
+        "unhelpful",
+        "not_accurate",
+        "too_expensive",
+        "too_few",
+        "not_understand",
+        "out_of_stock",
     ]
     product_id: str | None = None
     comment: str | None = None

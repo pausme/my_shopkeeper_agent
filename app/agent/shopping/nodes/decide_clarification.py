@@ -1,8 +1,12 @@
 """
 追问决策节点（导购链路）
 
-规则判断（不调 LLM）：信息不足时决定是否追问。受 PRD 约束最多追问有限轮次，
-且已有历史对话（多轮后半程）不再追问，避免用户流失
+规则判断（不调 LLM），对齐 PRD 10.2：
+- 最多连续追问 2 次，每次只问 1 个最关键问题
+- 第一问：品类缺失 → 品类四选一
+- 第二问：品类已知 → 该品类的关键参数/偏好题（题库维护）
+- 每问都带快捷选项（含"跳过"），用户跳过或回答"不知道"时由默认假设兜底
+- 已有多轮历史（追问后半程）不再追问，避免用户流失
 """
 
 from langgraph.runtime import Runtime
@@ -11,11 +15,22 @@ from app.agent.shopping.context import ShoppingAgentContext
 from app.agent.shopping.state import ShoppingAgentState
 from app.core.log import logger
 
-# 单次会话最多追问次数（PRD：最多连续追问 2 次，这里保守取 1）
-MAX_CLARIFICATION = 1
+# PRD 10.2：最多连续追问 2 次
+MAX_CLARIFICATION = 2
 
-CATEGORY_QUESTION = "想先确认一下：您想看哪个品类的商品？目前支持厨房小电器、家居生活、数码配件、母婴用品。"
-BUDGET_QUESTION = "您的预算大概是多少？告诉我上限后，我能把推荐收敛得更准。"
+CATEGORY_QUESTION = "想先确认一下：您想看哪个品类的商品？"
+CATEGORY_OPTIONS = ["厨房小电器", "家居生活", "数码配件", "母婴用品", "跳过"]
+
+# 品类关键参数题库（PRD 10.2：品类存在强关键参数但用户未提供时追问）
+CATEGORY_PARAM_BANK: dict[str, tuple[str, list[str]]] = {
+    "厨房小电器": ("厨房电器的使用上，您更看重哪一点？", ["好清洗", "功能全面", "静音", "小巧不占地方", "跳过"]),
+    "家居生活": ("家居选品上您更偏好哪个方向？", ["收纳实用", "舒适体验", "颜值装饰", "跳过"]),
+    "数码配件": ("数码配件主要搭配什么设备使用？", ["手机", "电脑", "平板", "通用", "跳过"]),
+    "母婴用品": ("宝宝多大月龄？", ["0-1 岁", "1-3 岁", "3 岁以上", "不确定", "跳过"]),
+}
+
+# 追问的回答会进入偏好槽位，跳过类回答不进入
+SKIP_ANSWERS = {"跳过", "不确定", "不知道"}
 
 
 async def decide_clarification(
@@ -33,20 +48,29 @@ async def decide_clarification(
     asked = state.get("clarification_count", 0)
 
     question = None
+    options: list[str] = []
     if (
         intent == "recommendation"
         and not has_history
         and asked < MAX_CLARIFICATION
         and not slots.get("product_ids")
     ):
-        # 只在品类缺失时追问（无法召回的最关键缺失）；
-        # 预算缺失不追问——排序的预算契合中性分足以兜底，追问反而打断用户
-        if not slots.get("category"):
+        category = slots.get("category")
+        if not category:
+            # 第一问：品类缺失（无法召回的最关键缺失）
             question = CATEGORY_QUESTION
+            options = CATEGORY_OPTIONS
+        else:
+            # 第二问：品类的关键参数/偏好
+            bank_question, bank_options = CATEGORY_PARAM_BANK.get(category, (None, []))
+            if bank_question and not slots.get("preferences"):
+                question = bank_question
+                options = bank_options
 
     logger.info(f"追问决策：{'需要' if question else '不需要'}追问")
     writer({"type": "progress", "step": step, "status": "success"})
     return {
         "clarification_needed": question is not None,
         "clarification_question": question or "",
+        "clarification_options": options,
     }

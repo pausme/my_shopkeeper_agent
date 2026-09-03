@@ -150,3 +150,21 @@
       expect: recommendation
       checks:
         all_category: 母婴用品
+
+- id: s017
+  category: 对比
+  turns:
+    - question: 推荐几款厨房小电器
+      expect: recommendation
+    - question: 帮我比较前两个
+      expect: recommendation
+      checks:
+        comparison_min_rows: 2
+
+- id: s018
+  category: 推荐
+  question: 想买一个空气炸锅，预算500以内，帮我推荐一下
+  expect: recommendation
+  checks:
+    contains_product: P0005
+    verdict_present: true

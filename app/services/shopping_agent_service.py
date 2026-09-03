@@ -2,10 +2,14 @@
 导购问答服务
 
 组装导购图的运行时上下文（商品主库/向量召回/评价检索/会话仓储），
-消费 shopping_graph.astream 的自定义事件流并包装为 SSE 输出
+消费 shopping_graph.astream 的自定义事件流并包装为 SSE 输出。
+附带两个进程内缓存（均模块级，跨请求共享）：
+- 查询缓存：相同单轮问题 10 分钟内直接回放事件（PRD 13.1 缓存命中 ≤3s）
+- 会话上轮推荐缓存：供"帮我比较前两个"类追问选取商品（PRD 10.8）
 """
 
 import json
+import time
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +21,49 @@ from app.repositories.es.review_es_repository import ReviewESRepository
 from app.repositories.mysql.meta.product_repository import ProductRepository
 from app.repositories.mysql.meta.shopping_repositories import ShoppingSessionRepository
 from app.repositories.qdrant.product_qdrant_repository import ProductQdrantRepository
+
+CACHE_TTL_SECONDS = 600
+CACHE_MAX_ENTRIES = 100
+
+# 查询缓存：query 文本 -> (过期时间, SSE 事件列表)。仅缓存无历史的单轮查询
+_query_cache: dict[str, tuple[float, list[dict]]] = {}
+
+# 会话上轮推荐：session_id -> (过期时间, 按推荐顺序的 product_ids)
+_session_last_products: dict[str, tuple[float, list[str]]] = {}
+
+
+def _cache_get(query: str) -> list[dict] | None:
+    now = time.monotonic()
+    for key in [k for k, (deadline, _) in _query_cache.items() if deadline <= now]:
+        _query_cache.pop(key, None)
+    entry = _query_cache.get(query)
+    return entry[1] if entry else None
+
+
+def _cache_put(query: str, events: list[dict]):
+    _query_cache[query] = (time.monotonic() + CACHE_TTL_SECONDS, events)
+    while len(_query_cache) > CACHE_MAX_ENTRIES:
+        _query_cache.pop(next(iter(_query_cache)))
+
+
+def _last_products_get(session_id: str) -> list[str]:
+    entry = _session_last_products.get(session_id)
+    if entry is None:
+        return []
+    deadline, ids = entry
+    if deadline <= time.monotonic():
+        _session_last_products.pop(session_id, None)
+        return []
+    return ids
+
+
+def _last_products_put(session_id: str, product_ids: list[str]):
+    _session_last_products[session_id] = (
+        time.monotonic() + CACHE_TTL_SECONDS,
+        product_ids,
+    )
+    while len(_session_last_products) > CACHE_MAX_ENTRIES:
+        _session_last_products.pop(next(iter(_session_last_products)))
 
 
 class ShoppingAgentService:
@@ -58,10 +105,22 @@ class ShoppingAgentService:
         # 会话开始即告知前端 session_id，后续轮次与反馈都依赖它
         yield sse({"type": "progress", "step": "开始导购", "status": "running", "session_id": session_id})
 
+        # 缓存命中：无历史的单轮相同问题直接回放事件（PRD 13.1 缓存命中 ≤3s）
+        history = history or []
+        if not history and not selected_product_ids:
+            cached = _cache_get(query)
+            if cached is not None:
+                for event in cached:
+                    event["session_id"] = session_id
+                    event["cached"] = True
+                    yield sse(event)
+                return
+
+        last_ids = _last_products_get(session_id) if session_id else []
         state = ShoppingAgentState(
             query=query,
             rewritten_query=query,
-            history=history or [],
+            history=history,
             session_id=session_id,
             user_id=user_id,
             intent="recommendation",
@@ -69,7 +128,9 @@ class ShoppingAgentService:
             selected_product_ids=selected_product_ids or [],
             clarification_needed=False,
             clarification_question="",
+            clarification_options=[],
             clarification_count=clarification_count,
+            last_recommended_ids=last_ids,
             candidate_products=[],
             review_summary={},
             risk_summary={},
@@ -87,15 +148,30 @@ class ShoppingAgentService:
             shopping_session_repository=self.shopping_session_repository,
             qdrant_client=None,
         )
+        events: list[dict] = []
         try:
             async for chunk in shopping_graph.astream(
                 input=state, context=context, stream_mode="custom"
             ):
                 if scene_tag and chunk.get("type") == "recommendation":
                     chunk["scene_tag"] = scene_tag
+                events.append(chunk)
                 yield sse(chunk)
         except Exception as e:
             yield sse({"type": "error", "message": f"导购服务异常：{e}"})
+            return
+
+        # 更新两个缓存：完整推荐结果入查询缓存；推荐商品顺序入会话上轮推荐
+        if events and events[-1].get("type") == "comparison":
+            if not history:
+                _cache_put(query, events)
+            recommended_event = next(
+                (e for e in reversed(events) if e.get("type") == "recommendation"), None
+            )
+            if recommended_event:
+                ids = [p["product_id"] for p in recommended_event.get("recommended_products", [])]
+                if ids:
+                    _last_products_put(session_id, ids)
 
     # ---------- 非流式辅助查询 ----------
 

@@ -138,6 +138,11 @@ class CaseResult:
             if lacking:
                 failures.append(f"母婴推荐缺谨慎话术：{lacking}")
 
+        if checks.get("verdict_present") and products:
+            lacking = [p["product_id"] for p in products if not p.get("verdict")]
+            if lacking:
+                failures.append(f"缺推荐结论：{lacking}")
+
         if "comparison_min_rows" in checks:
             rows = (self.comparison or {}).get("table", {}).get("rows", [])
             if len(rows) < checks["comparison_min_rows"]:

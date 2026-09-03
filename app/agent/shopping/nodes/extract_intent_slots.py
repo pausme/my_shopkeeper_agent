@@ -2,8 +2,11 @@
 意图与槽位抽取节点（导购链路）
 
 一次 LLM 调用同时完成意图识别（recommendation/comparison/summary/followup）
-与购买槽位抽取（品类/场景/预算/人群/偏好/排除项），结果写入状态供后续节点使用
+与购买槽位抽取（品类/场景/预算/人群/偏好/排除项），结果写入状态供后续节点使用。
+附耗时观测日志（PRD 13.4）
 """
+
+import time
 
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import PromptTemplate
@@ -36,15 +39,17 @@ async def extract_intent_slots(
     writer = runtime.stream_writer
     step = "理解需求"
     writer({"type": "progress", "step": step, "status": "running"})
+    started = time.monotonic()
 
     try:
         query = state.get("rewritten_query") or state["query"]
         history_text = format_history(state.get("history")) or "无"
         selected_ids = state.get("selected_product_ids") or []
+        last_ids = state.get("last_recommended_ids") or []
 
         prompt = PromptTemplate(
             template=load_prompt("extract_intent_slots"),
-            input_variables=["query", "history", "selected_product_ids"],
+            input_variables=["query", "history", "selected_product_ids", "last_product_ids"],
         )
         output_parser = JsonOutputParser()
         chain = prompt | llm | output_parser
@@ -54,6 +59,7 @@ async def extract_intent_slots(
                 "query": query,
                 "history": history_text,
                 "selected_product_ids": ", ".join(selected_ids) or "无",
+                "last_product_ids": ", ".join(last_ids) or "无",
             }
         )
         if not isinstance(result, dict):
@@ -63,7 +69,9 @@ async def extract_intent_slots(
                 result[key] = default
         intent = result.get("intent") or "recommendation"
 
-        logger.info(f"导购意图：{intent}，槽位：{result}")
+        logger.info(
+            f"导购意图：{intent}，槽位：{result}，耗时 {time.monotonic() - started:.2f}s"
+        )
         writer({"type": "progress", "step": step, "status": "success"})
         return {"intent": intent, "purchase_slots": result}
     except Exception as e:

@@ -12,9 +12,16 @@ type ShoppingBubbleProps = {
   message: ShoppingMessage;
   onFeedback?: (feedbackType: string, productId: string, messageId: string) => void;
   onProductClick?: (productId: string, messageId: string) => void;
+  /** 点击追问快捷选项（直接作为新一轮提问发出） */
+  onOptionClick?: (option: string) => void;
 };
 
-export function ShoppingBubble({ message, onFeedback, onProductClick }: ShoppingBubbleProps) {
+export function ShoppingBubble({
+  message,
+  onFeedback,
+  onProductClick,
+  onOptionClick,
+}: ShoppingBubbleProps) {
   const isUser = message.role === "user";
 
   return (
@@ -34,12 +41,28 @@ export function ShoppingBubble({ message, onFeedback, onProductClick }: Shopping
             !isUser && message.kind === "error" && "border-tomato/30 bg-tomato/10",
           )}
         >
-          {/* 追问气泡 */}
+          {/* 追问气泡 + 快捷选项（PRD 10.2：提供快捷选项，允许跳过） */}
           {message.kind === "clarification" && (
-            <p className="flex items-start gap-2 text-[15px] leading-7 text-ink">
-              <HelpCircle className="mt-1 h-4 w-4 shrink-0 text-brass" aria-hidden="true" />
-              {message.content}
-            </p>
+            <div>
+              <p className="flex items-start gap-2 text-[15px] leading-7 text-ink">
+                <HelpCircle className="mt-1 h-4 w-4 shrink-0 text-brass" aria-hidden="true" />
+                {message.content}
+              </p>
+              {message.options && message.options.length > 0 && onOptionClick && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {message.options.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => onOptionClick(option)}
+                      className="border border-moss/35 bg-white/70 px-3 py-1.5 text-xs font-semibold text-ink/75 transition hover:border-moss/60 hover:bg-moss/10"
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           {/* 进度占位 */}

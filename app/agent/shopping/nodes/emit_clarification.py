@@ -40,6 +40,7 @@ async def emit_clarification(
         {
             "type": "clarification",
             "question": question,
+            "options": state.get("clarification_options") or [],
             "session_id": session_id,
             "clarification_count": state.get("clarification_count", 0) + 1,
         }

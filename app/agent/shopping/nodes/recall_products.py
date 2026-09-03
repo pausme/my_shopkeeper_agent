@@ -1,16 +1,23 @@
 """
 商品召回节点（导购链路）
 
-优先使用用户显式指定的商品 ID；否则以改写需求 + 槽位拼接文本做语义召回，
-并用商品主库补全/校正在售状态、价格、库存等权威字段
+三级策略（PRD 10.3）：
+1. 用户显式指定商品 ID 时直查主库；
+2. 否则语义召回（改写需求+槽位拼接文本）+ 主库补全校正（在售+有库存）；
+3. 召回不足 5 款时按品类热销补召回；向量服务异常时降级为品类热销（PRD 13.2）
 """
 
+import time
 
 from langgraph.runtime import Runtime
 
 from app.agent.shopping.context import ShoppingAgentContext
 from app.agent.shopping.state import ShoppingAgentState
+from app.conf.app_config import app_config
 from app.core.log import logger
+
+# 召回候选不足该数量时触发热销补召回
+TOP_UP_THRESHOLD = 5
 
 
 async def recall_products(
@@ -21,6 +28,7 @@ async def recall_products(
     writer = runtime.stream_writer
     step = "召回商品"
     writer({"type": "progress", "step": step, "status": "running"})
+    started = time.monotonic()
 
     try:
         product_repository = runtime.context["product_repository"]
@@ -29,6 +37,9 @@ async def recall_products(
 
         slots = state.get("purchase_slots") or {}
         selected_ids = state.get("selected_product_ids") or slots.get("product_ids") or []
+        category = slots.get("category")
+        recall_limit = app_config.shopping.recall_limit
+        recall_threshold = app_config.shopping.recall_threshold
 
         if selected_ids:
             rows = await product_repository.get_by_product_ids(selected_ids)
@@ -42,8 +53,16 @@ async def recall_products(
             parts.extend(slots.get("preferences") or [])
             search_text = " ".join(parts)
 
-            embedding = await embedding_client.aembed_query(search_text)
-            payloads = await product_qdrant.search(embedding, limit=12)
+            # 语义召回；向量服务异常时降级为品类热销（PRD 13.2）
+            try:
+                embedding = await embedding_client.aembed_query(search_text)
+                payloads = await product_qdrant.search(
+                    embedding, score_threshold=recall_threshold, limit=recall_limit
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"语义召回失败，降级为品类热销：{exc}")
+                payloads = []
+
             ids = [payload["product_id"] for payload in payloads]
             rows = {row.product_id: row for row in await product_repository.get_by_product_ids(ids)}
             candidates = []
@@ -52,7 +71,21 @@ async def recall_products(
                 if row is not None:
                     candidates.append(_row_to_candidate(row, payload.get("semantic_score", 0.0)))
 
-        logger.info(f"召回候选商品 {len(candidates)} 款")
+            # 热销补召回：语义候选不足时，按品类（无品类则全局）近 30 天销量补充
+            if len(candidates) < TOP_UP_THRESHOLD:
+                exclude = {c["product_id"] for c in candidates}
+                hot = await product_repository.list_by_category(
+                    category_name=category, limit=recall_limit
+                )
+                for row in hot:
+                    if row.product_id not in exclude:
+                        candidates.append(_row_to_candidate(row, 0.0))
+                        exclude.add(row.product_id)
+                logger.info(f"热销补召回：候选补至 {len(candidates)} 款")
+
+        logger.info(
+            f"召回候选商品 {len(candidates)} 款，耗时 {time.monotonic() - started:.2f}s"
+        )
         writer({"type": "progress", "step": step, "status": "success"})
         return {"candidate_products": candidates}
     except Exception as e:

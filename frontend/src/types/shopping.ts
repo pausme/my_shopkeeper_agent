@@ -13,6 +13,7 @@ export type ShoppingProgressEvent = {
 export type ShoppingClarificationEvent = {
   type: "clarification";
   question: string;
+  options: string[];
   session_id: string;
   clarification_count: number;
 };
@@ -29,6 +30,10 @@ export type RecommendedProduct = {
   attributes: Record<string, string>;
   semantic_score?: number;
   reason: string;
+  /** 推荐结论：最推荐 / 预算优先 / 品质优先 / 谨慎购买（PRD 10.5） */
+  verdict?: string;
+  /** 到手价超出用户预算但优势明显被保留展示（PRD 10.4 显式标记） */
+  budget_exceeded?: boolean;
 };
 
 export type ShoppingRecommendationEvent = {
@@ -79,6 +84,8 @@ export type ShoppingMessage = {
   /** progress 专属 */
   steps?: string[];
   error?: string;
+  /** clarification 专属：快捷选项 */
+  options?: string[];
 };
 
 export type ShoppingSessionSummary = {

@@ -148,6 +148,7 @@ export default function App() {
           ...message,
           kind: "clarification",
           content: event.question,
+          options: event.options ?? [],
         }));
         return;
       }
@@ -250,6 +251,13 @@ export default function App() {
       event_type: "product_click",
       product_id: productId,
     });
+  };
+
+  /** 追问快捷选项：直接作为新一轮提问发出 */
+  const handleOptionClick = (option: string) => {
+    if (isStreaming) return;
+    setDraft(option);
+    void startShoppingQuery(option);
   };
 
   const loadShoppingSession = async (sessionId: string) => {
@@ -481,6 +489,7 @@ export default function App() {
                     message={message}
                     onFeedback={handleShoppingFeedback}
                     onProductClick={handleProductClick}
+                    onOptionClick={handleOptionClick}
                   />
                 ))}
               </div>

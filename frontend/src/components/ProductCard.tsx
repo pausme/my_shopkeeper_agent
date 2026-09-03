@@ -22,16 +22,33 @@ export function ProductCard({ product, onFeedback, onProductClick }: ProductCard
   return (
     <article className="border border-ink/10 bg-white/75 p-4 shadow-line transition hover:border-moss/30">
       <div className="flex items-start justify-between gap-3">
-        <h4 className="min-w-0 flex-1 text-sm font-semibold leading-5 text-ink">
+        <div className="min-w-0 flex-1">
+          {product.verdict && (
+            <span
+              className={cn(
+                "mb-1.5 inline-block px-2 py-0.5 text-[11px] font-semibold",
+                product.verdict === "谨慎购买"
+                  ? "bg-tomato/15 text-tomato"
+                  : product.verdict === "预算优先"
+                    ? "bg-brass/20 text-brass"
+                    : "bg-moss/15 text-moss",
+              )}
+            >
+              {product.verdict}
+            </span>
+          )}
+          {product.budget_exceeded && (
+            <div className="mb-1 text-[11px] text-tomato/80">* 略超预算，但综合优势明显</div>
+          )}
           <button
             type="button"
             onClick={() => onProductClick?.(product.product_id)}
-            className="text-left transition hover:text-moss"
+            className="text-left text-sm font-semibold leading-5 text-ink transition hover:text-moss"
             title="查看商品（已记录点击兴趣）"
           >
             {product.title}
           </button>
-        </h4>
+        </div>
         <div className="shrink-0 text-right">
           <div className="text-base font-semibold text-ink">¥{price}</div>
           {hasPromo && (
@@ -71,13 +88,15 @@ export function ProductCard({ product, onFeedback, onProductClick }: ProductCard
       )}
 
       {onFeedback && (
-        <div className="mt-3 flex items-center gap-2 border-t border-ink/5 pt-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink/5 pt-2">
           <span className="text-[11px] text-ink/40">这条推荐：</span>
           {[
-            ["helpful", "有帮助"],
-            ["unhelpful", "没帮助"],
-            ["too_expensive", "太贵"],
-            ["not_understand", "没看懂"],
+            ["helpful", "推荐准确"],
+            ["too_expensive", "价格不合适"],
+            ["too_few", "商品太少"],
+            ["not_accurate", "理由不可信"],
+            ["not_understand", "没理解我的需求"],
+            ["out_of_stock", "已经无货"],
           ].map(([value, label]) => (
             <button
               key={value}

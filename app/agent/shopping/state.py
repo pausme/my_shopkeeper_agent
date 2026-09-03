@@ -23,7 +23,9 @@ class ShoppingAgentState(TypedDict):
 
     clarification_needed: bool  # 是否需要追问
     clarification_question: str  # 追问内容
+    clarification_options: list[str]  # 追问快捷选项（PRD 10.2：提供快捷选项、允许跳过）
     clarification_count: int  # 本会话已追问次数（防超限）
+    last_recommended_ids: list[str]  # 上一轮推荐的商品 ID（供"比较前两个"类追问）
 
     candidate_products: list[dict]  # 召回候选（payload + semantic_score）
     review_summary: dict  # 商品 -> 评价要点 {product_id: {negative_tags, positive_tags, sample_size}}
