@@ -106,9 +106,20 @@ jobs:
 
       - name: Run smoke evals on server
         run: |
-          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" 'bash -s' <<'REMOTE'
           set -e
-          cd ~/shopkeeper-agent
-          export PATH="$HOME/.local/bin:$PATH"
-          uv run python evals/run_evals.py --smoke
-          REMOTE
+          HOST="${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
+          # 评测耗时可达 20+ 分钟，长连接容易被中间设备掐断（远端进程随会话死亡）。
+          # 因此评测在服务器端脱钩运行并落盘结果，CI 只用短连接轮询结果文件
+          ssh "$HOST" 'rm -f /tmp/smoke_eval.exit /tmp/smoke_eval.log; cd ~/shopkeeper-agent && export PATH="$HOME/.local/bin:$PATH" && setsid bash -c "uv run python evals/run_evals.py --smoke > /tmp/smoke_eval.log 2>&1; echo \$? > /tmp/smoke_eval.exit" > /dev/null 2>&1 < /dev/null &'
+          for i in $(seq 1 90); do
+            sleep 30
+            if ssh "$HOST" 'test -f /tmp/smoke_eval.exit' 2>/dev/null; then
+              code=$(ssh "$HOST" 'cat /tmp/smoke_eval.exit')
+              ssh "$HOST" 'grep -E "^\[|总体|失败用例|EVAL_" /tmp/smoke_eval.log || tail -20 /tmp/smoke_eval.log'
+              echo "smoke eval exit code: $code"
+              exit "$code"
+            fi
+          done
+          ssh "$HOST" 'tail -20 /tmp/smoke_eval.log' || true
+          echo "smoke eval polling timed out (45min)"
+          exit 1
