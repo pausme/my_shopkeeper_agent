@@ -12,7 +12,6 @@ from langgraph.constants import END, START
 from langgraph.graph import StateGraph
 
 from app.agent.llm import llm  # noqa: F401  # 提前导入保证多供应商初始化日志只打一次
-from app.agent.nodes.rewrite_question import rewrite_question
 from app.agent.shopping.context import ShoppingAgentContext
 from app.agent.shopping.nodes.analyze_reviews import analyze_reviews
 from app.agent.shopping.nodes.build_comparison import build_comparison
@@ -23,6 +22,7 @@ from app.agent.shopping.nodes.generate_recommendation import generate_recommenda
 from app.agent.shopping.nodes.persist_and_emit import persist_and_emit
 from app.agent.shopping.nodes.rank_products import rank_products
 from app.agent.shopping.nodes.recall_products import recall_products
+from app.agent.shopping.nodes.rewrite_question import rewrite_question
 from app.agent.shopping.state import ShoppingAgentState
 
 builder = StateGraph(state_schema=ShoppingAgentState, context_schema=ShoppingAgentContext)

@@ -123,3 +123,16 @@ export function sendShoppingFeedback(payload: {
     body: JSON.stringify(payload),
   });
 }
+
+/** 行为埋点上报（商品点击等），fire-and-forget */
+export function sendShoppingEvent(payload: {
+  session_id: string;
+  message_id?: string;
+  event_type: string;
+  product_id?: string;
+}): void {
+  requestJson("/api/shopping/events", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }).catch(() => {});
+}

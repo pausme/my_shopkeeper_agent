@@ -9,9 +9,11 @@ import type { RecommendedProduct } from "../types/shopping";
 type ProductCardProps = {
   product: RecommendedProduct;
   onFeedback?: (feedbackType: string, productId: string) => void;
+  /** 商品点击上报（M8.3 埋点） */
+  onProductClick?: (productId: string) => void;
 };
 
-export function ProductCard({ product, onFeedback }: ProductCardProps) {
+export function ProductCard({ product, onFeedback, onProductClick }: ProductCardProps) {
   const price = product.promotion_price ?? product.price;
   const hasPromo = product.promotion_price != null && product.promotion_price < product.price;
   // 从推荐理由中拆出风险提示（模型被要求在理由里带出风险）
@@ -21,7 +23,14 @@ export function ProductCard({ product, onFeedback }: ProductCardProps) {
     <article className="border border-ink/10 bg-white/75 p-4 shadow-line transition hover:border-moss/30">
       <div className="flex items-start justify-between gap-3">
         <h4 className="min-w-0 flex-1 text-sm font-semibold leading-5 text-ink">
-          {product.title}
+          <button
+            type="button"
+            onClick={() => onProductClick?.(product.product_id)}
+            className="text-left transition hover:text-moss"
+            title="查看商品（已记录点击兴趣）"
+          >
+            {product.title}
+          </button>
         </h4>
         <div className="shrink-0 text-right">
           <div className="text-base font-semibold text-ink">¥{price}</div>

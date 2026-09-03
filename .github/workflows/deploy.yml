@@ -104,22 +104,21 @@ jobs:
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Run smoke evals on server
+      - name: Run shopping smoke evals on server
         run: |
           set -e
           HOST="${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
-          # 评测耗时可达 20+ 分钟，长连接容易被中间设备掐断（远端进程随会话死亡）。
-          # 因此评测在服务器端脱钩运行并落盘结果，CI 只用短连接轮询结果文件
-          ssh "$HOST" 'rm -f /tmp/smoke_eval.exit /tmp/smoke_eval.log; cd ~/shopkeeper-agent && export PATH="$HOME/.local/bin:$PATH" && setsid bash -c "uv run python evals/run_evals.py --smoke > /tmp/smoke_eval.log 2>&1; echo \$? > /tmp/smoke_eval.exit" > /dev/null 2>&1 < /dev/null &'
-          for i in $(seq 1 110); do
-            sleep 30
-            if ssh "$HOST" 'test -f /tmp/smoke_eval.exit' 2>/dev/null; then
-              code=$(ssh "$HOST" 'cat /tmp/smoke_eval.exit')
-              ssh "$HOST" 'grep -E "^\[|总体|失败用例|EVAL_" /tmp/smoke_eval.log || tail -20 /tmp/smoke_eval.log'
-              echo "smoke eval exit code: $code"
+          # 冒烟在服务器端脱钩运行并落盘结果，CI 只用短连接轮询结果文件
+          ssh "$HOST" 'rm -f /tmp/shopping_eval.exit /tmp/shopping_eval.log; cd ~/shopkeeper-agent && export PATH="$HOME/.local/bin:$PATH" && setsid bash -c "API_TOKEN=\$(grep ^API_TOKEN= .env | cut -d= -f2) uv run python scripts/smoke_shopping.py > /tmp/shopping_eval.log 2>&1; echo \$? > /tmp/shopping_eval.exit" > /dev/null 2>&1 < /dev/null &'
+          for i in $(seq 1 30); do
+            sleep 20
+            if ssh "$HOST" 'test -f /tmp/shopping_eval.exit' 2>/dev/null; then
+              code=$(ssh "$HOST" 'cat /tmp/shopping_eval.exit')
+              ssh "$HOST" 'tail -15 /tmp/shopping_eval.log'
+              echo "shopping smoke exit code: $code"
               exit "$code"
             fi
           done
-          ssh "$HOST" 'tail -20 /tmp/smoke_eval.log' || true
-          echo "smoke eval polling timed out (55min)"
+          ssh "$HOST" 'tail -20 /tmp/shopping_eval.log' || true
+          echo "shopping smoke polling timed out (10min)"
           exit 1

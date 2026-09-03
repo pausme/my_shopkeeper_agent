@@ -11,9 +11,10 @@ import type { ShoppingMessage } from "../types/shopping";
 type ShoppingBubbleProps = {
   message: ShoppingMessage;
   onFeedback?: (feedbackType: string, productId: string, messageId: string) => void;
+  onProductClick?: (productId: string, messageId: string) => void;
 };
 
-export function ShoppingBubble({ message, onFeedback }: ShoppingBubbleProps) {
+export function ShoppingBubble({ message, onFeedback, onProductClick }: ShoppingBubbleProps) {
   const isUser = message.role === "user";
 
   return (
@@ -87,6 +88,11 @@ export function ShoppingBubble({ message, onFeedback }: ShoppingBubbleProps) {
                         onFeedback
                           ? (feedbackType, productId) =>
                               onFeedback(feedbackType, productId, message.messageId ?? "")
+                          : undefined
+                      }
+                      onProductClick={
+                        onProductClick
+                          ? (productId) => onProductClick(productId, message.messageId ?? "")
                           : undefined
                       }
                     />

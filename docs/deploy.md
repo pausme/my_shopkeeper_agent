@@ -137,13 +137,13 @@ curl -s 127.0.0.1:8081/health            # TEI：返回 ok（模型加载需几�
 docker exec mysql mysql -udidilili -pdili123 -e "show databases;"   # 应看到 dw 和 meta
 ```
 
-## 步骤 5：构建元数据知识库（一次性）
+## 步骤 5：生成导购种子数据（一次性）
 
 ```bash
-cd ~/shopkeeper-agent && uv run python -m app.scripts.build_meta_knowledge -c conf/meta_config.yaml
+cd ~/shopkeeper-agent && uv run python scripts/seed_shopping_data.py
 ```
 
-这一步只依赖本地 TEI，不需要外网。成功后 Qdrant 里出现 `column_info_collection` / `metric_info_collection`，ES 里出现 `value_index`。元数据持久化在 Docker 卷中，**服务器重启后不需要重建**。
+这一步只依赖本地 TEI，不需要外网。生成 4 品类 24 款商品、600 条评价与风险摘要，并重建 Qdrant `product_info_collection` 与 ES `review_index`。数据持久化在 Docker 卷中，**服务器重启后不需要重建**；重复执行为覆盖式重建。
 
 ## 步骤 6：启动后端（systemd 保活）
 
@@ -185,15 +185,13 @@ ssh -L 9443:localhost:9443 user@服务器IP   # 然后本机访问 https://local
 
 ## 步骤 8：整体验证
 
-先在服务器上直连后端，确认 SSE 链路通（`-N` 关闭 curl 缓冲才能看到逐步输出）：
+先跑导购冒烟脚本（三用例：推荐/追问/反馈）：
 
 ```bash
-curl -N -X POST http://127.0.0.1:8000/api/query -H 'Content-Type: application/json' -d '{"query":"统计华北地区的销售总额"}'
+cd ~/shopkeeper-agent && API_TOKEN=$(grep ^API_TOKEN= .env | cut -d= -f2) uv run python scripts/smoke_shopping.py
 ```
 
-应依次收到 `progress`（抽取关键词 → 三路召回 → 合并 → 过滤 → 生成SQL → 校验SQL → 执行SQL）和最后的 `result` 消息。
-
-然后浏览器访问 `http://服务器IP`，输入同一个问题：StepRail 逐步亮起、最后出结果表格即部署成功。
+输出 `SMOKE_SHOPPING_OK` 即链路正常。然后浏览器访问 `http://服务器IP`，在输入框描述购买需求（如"想买个空气炸锅预算500"），看到推荐商品卡片即部署成功。
 
 在 Portainer 的 Containers 页面核对各容器实际内存占用，验证预算。
 
@@ -207,7 +205,7 @@ curl -N -X POST http://127.0.0.1:8000/api/query -H 'Content-Type: application/js
 | TEI 容器被 OOM Kill | 2g 内存 limit 对 bge-large 偏紧时，关闭其他临时占内存的进程，或把 limit 提到 2.5g |
 | 前端页面正常但一直转圈不出结果 | `docker logs frontend` + 后端 `journalctl -u shopkeeper`；确认后端 8000 已监听（`curl 127.0.0.1:8000/docs`） |
 | 前端有进度但卡在中间不动 | nginx 缓冲未关（确认挂载的是 `docker/nginx/frontend.conf` 且容器已重建） |
-| 问数报错找不到表/字段 | 元数据知识库没构建成功，重跑步骤 5 |
+| 推荐结果为空或商品缺失 | 重跑步骤 5 种子脚本（覆盖式重建，不影响其他数据） |
 | MySQL 里没有 dw / meta 库 | 首次启动时初始化脚本失败。修复后需删除卷重建（**会清空数据**）：`docker compose -f docker/docker-compose.server.yaml down -v && docker compose -f docker/docker-compose.server.yaml up -d`，再重跑步骤 5 |
 
 应用日志位于项目根 `logs/` 目录（loguru，10MB 轮转、保留 7 天），带 request_id 可按请求追踪。
@@ -236,5 +234,5 @@ curl -N -X POST http://127.0.0.1:8000/api/query -H 'Content-Type: application/js
 注意事项：
 
 - 同步时会排除 `.env`、`docker/.env`、`docker/embedding`（模型）、`.venv`、`logs`，服务器上的密钥与模型不会被覆盖；
-- 每次部署都会重启后端（`systemctl restart shopkeeper`），正在执行的问数查询会被中断；
-- 元数据知识库不会被自动重建；修改 `conf/meta_config.yaml` 或 `docker/mysql/*.sql` 后需手动执行步骤 5。
+- 每次部署都会重启后端（`systemctl restart shopkeeper`），正在执行的导购会话会被中断；
+- 种子数据不会被自动重建；修改 `scripts/seed_shopping_data.py` 后需手动执行步骤 5。

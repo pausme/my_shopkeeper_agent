@@ -11,8 +11,7 @@ from langgraph.runtime import Runtime
 
 from app.agent.llm import llm
 from app.agent.shopping.context import ShoppingAgentContext
-from app.agent.shopping.state import ShoppingAgentState
-from app.agent.state import format_history
+from app.agent.shopping.state import ShoppingAgentState, format_history
 from app.core.log import logger
 from app.prompt.prompt_loader import load_prompt
 

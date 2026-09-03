@@ -34,3 +34,22 @@ class ShoppingAgentState(TypedDict):
     comparison_table: dict  # 对比表 {headers, rows}
 
     error: str | None  # 错误信息
+
+
+def format_history(history: list[dict] | None, max_messages: int = 6) -> str:
+    """把最近对话渲染成提示词可读的文本，超出的旧消息截断
+
+    返回空字符串表示没有历史（独立问题），调用方在提示词里以"无"占位。
+    """
+
+    if not history:
+        return ""
+
+    role_names = {"user": "用户", "assistant": "助手"}
+    lines = []
+    for message in history[-max_messages:]:
+        role = role_names.get(message.get("role", ""), None)
+        content = str(message.get("content", "")).strip()
+        if role and content:
+            lines.append(f"{role}：{content}")
+    return "\n".join(lines)

@@ -39,10 +39,10 @@ async def decide_clarification(
         and asked < MAX_CLARIFICATION
         and not slots.get("product_ids")
     ):
+        # 只在品类缺失时追问（无法召回的最关键缺失）；
+        # 预算缺失不追问——排序的预算契合中性分足以兜底，追问反而打断用户
         if not slots.get("category"):
             question = CATEGORY_QUESTION
-        elif not slots.get("budget_max") and not slots.get("budget_min"):
-            question = BUDGET_QUESTION
 
     logger.info(f"追问决策：{'需要' if question else '不需要'}追问")
     writer({"type": "progress", "step": step, "status": "success"})

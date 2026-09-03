@@ -12,12 +12,8 @@ from fastapi import FastAPI
 
 from app.clients.embedding_client_manager import embedding_client_manager
 from app.clients.es_client_manager import es_client_manager
-from app.clients.mysql_client_manager import (
-    dw_mysql_client_manager,
-    meta_mysql_client_manager,
-)
+from app.clients.mysql_client_manager import meta_mysql_client_manager
 from app.clients.qdrant_client_manager import qdrant_client_manager
-from app.clients.rerank_client_manager import rerank_client_manager
 
 
 @asynccontextmanager
@@ -29,18 +25,9 @@ async def lifespan(app: FastAPI):
     embedding_client_manager.init()
     es_client_manager.init()
     meta_mysql_client_manager.init()
-    dw_mysql_client_manager.init()
-    # rerank 精排服务是可选增强：初始化失败不阻断启动，调用时会自动降级
-    try:
-        rerank_client_manager.init()
-    except Exception as e:  # noqa: BLE001
-        from app.core.log import logger
-
-        logger.warning(f"rerank 服务初始化失败，召回精排将回退原始排序：{e}")
 
     # 自动建表：显式导入全部模型模块，确保 metadata 注册完整后再 create_all
     # （仅靠业务模块的 import 链隐式注册，重构时容易漏表）
-    import app.models.conversation  # noqa: F401
     import app.models.product  # noqa: F401
     import app.models.shopping  # noqa: F401
     import app.models.user  # noqa: F401
@@ -56,5 +43,3 @@ async def lifespan(app: FastAPI):
     await qdrant_client_manager.close()
     await es_client_manager.close()
     await meta_mysql_client_manager.close()
-    await dw_mysql_client_manager.close()
-    await rerank_client_manager.close()

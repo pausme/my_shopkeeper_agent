@@ -1,15 +1,13 @@
 """
 MySQL 客户端管理器
 
-统一创建和管理项目中的异步 MySQL 客户端，当前项目会同时连接两套 MySQL
-一套是保存结构化元数据的 meta 数据库，一套是模拟教学数仓的 dw 数据库
-模块对外提供可复用的客户端管理器和 session 工厂
+统一创建和管理项目中的异步 MySQL 客户端，连接保存商品与导购业务数据的
+meta 数据库。模块对外提供可复用的客户端管理器和 session 工厂，
 方便脚本入口 服务层和仓储层按统一方式访问数据库
 """
 
 import asyncio
 
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     async_sessionmaker,
@@ -53,23 +51,20 @@ class MySQLClientManager:
         await self.engine.dispose()
 
 
-# 一套连元数据库，一套连数仓模拟库
-# 后续由不同 repository 按职责分别使用
+# 商品与导购业务数据的唯一数据库入口
 meta_mysql_client_manager = MySQLClientManager(app_config.db_meta)
-dw_mysql_client_manager = MySQLClientManager(app_config.db_dw)
 
 if __name__ == "__main__":
-    dw_mysql_client_manager.init()
+    meta_mysql_client_manager.init()
 
     async def test():
         """执行一次简单查询，验证 MySQL 连接与结果结构"""
-        async with dw_mysql_client_manager.session_factory() as session:
-            sql = "select * from fact_order limit 10"
-            result = await session.execute(text(sql))
-            # mappings().fetchall() 会把结果转成“按列名访问”的行对象列表
-            rows = result.mappings().fetchall()
-            print(type(rows))
-            print(type(rows[0]))
-            print(rows[0]["order_id"])
+        async with meta_mysql_client_manager.session_factory() as session:
+            from sqlalchemy import func, select
+
+            from app.models.product import ProductInfoMySQL
+
+            result = await session.execute(select(func.count()).select_from(ProductInfoMySQL))
+            print("商品数:", result.scalar())
 
     asyncio.run(test())

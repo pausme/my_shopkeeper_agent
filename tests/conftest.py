@@ -8,3 +8,4 @@ app 配置模块在导入时会解析 ${oc.env:LLM_API_KEY}，
 import os
 
 os.environ.setdefault("LLM_API_KEY", "test-key-for-pytest")
+os.environ.setdefault("JWT_SECRET", "test-secret-for-pytest-0123456789abcdef")

@@ -5,24 +5,35 @@ AI 商品决策助手（导购）路由
 - POST /api/shopping/feedback         推荐反馈
 - GET  /api/shopping/sessions         会话列表
 - GET  /api/shopping/sessions/{id}    会话详情（消息历史）
+- DELETE /api/shopping/sessions/{id}  删除会话（隐私控制）
+- POST /api/shopping/events           行为埋点上报
 - POST /api/shopping/compare          指定商品横向对比
 - GET  /api/shopping/products/{id}/summary  商品摘要与风险
 
 接口规则（PRD）：不暴露 SQL/提示词/内部向量分值；反馈可追溯 session_id + message_id
 """
 
+import os
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.params import Header
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 from starlette.responses import StreamingResponse
 
 from app.api.dependencies import get_shopping_service
-from app.api.routers.query_router import require_api_token
 from app.services.shopping_agent_service import ShoppingAgentService
 
 shopping_router = APIRouter(prefix="/api/shopping")
+
+
+async def require_api_token(
+    x_api_token: Annotated[str | None, Header()] = None,
+):
+    """共享令牌鉴权：服务器设置了 API_TOKEN 环境变量时强制校验请求头，未设置则放行（本地开发）"""
+
+    expected = os.getenv("API_TOKEN")
+    if expected and x_api_token != expected:
+        raise HTTPException(status_code=401, detail="Invalid API token")
 
 
 class ShoppingQuerySchema(BaseModel):

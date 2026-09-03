@@ -146,9 +146,9 @@ class CaseResult:
         if "text_intent_comparison" in checks:
             wanted = set(checks["text_intent_comparison"])
             rows = (self.comparison or {}).get("table", {}).get("rows", [])
-            covered = any(wanted & {row.get("product_id") for row in rows} for _ in [0]) if rows else False
+            row_ids = {row.get("product_id") for row in rows}
             ids_in_reasons = {p["product_id"] for p in products}
-            if len(rows) < 2 and not wanted.issubset(ids_in_reasons):
+            if len(rows) < 2 and not wanted.issubset(ids_in_reasons) and not wanted & row_ids:
                 failures.append(f"文本对比未覆盖 {sorted(wanted)}")
 
         return failures

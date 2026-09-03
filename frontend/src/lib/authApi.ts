@@ -1,9 +1,8 @@
 /**
- * 认证与会话同步客户端
- * JWT 登录/注册、会话列表的服务端读写
+ * 认证客户端
+ * 用户名密码注册/登录，JWT 存于 localStorage
  */
-import type { Conversation } from "../types/agent";
-import { API_BASE_URL, authHeaders, getApiToken } from "./agentApiShared";
+import { API_BASE_URL, authHeaders } from "./agentApiShared";
 
 async function requestJson(path: string, init: RequestInit = {}) {
   const headers: Record<string, string> = {
@@ -37,28 +36,4 @@ export function register(
     method: "POST",
     body: JSON.stringify({ username, password }),
   });
-}
-
-export function fetchConversations(): Promise<Conversation[]> {
-  return requestJson("/api/conversations");
-}
-
-export function saveConversation(conversation: Conversation): Promise<unknown> {
-  return requestJson(`/api/conversations/${conversation.id}`, {
-    method: "PUT",
-    body: JSON.stringify({
-      id: conversation.id,
-      title: conversation.title,
-      messages: conversation.messages,
-    }),
-  });
-}
-
-export function deleteConversationRemote(id: string): Promise<unknown> {
-  return requestJson(`/api/conversations/${id}`, { method: "DELETE" });
-}
-
-/** /api/query 仍使用共享令牌；导出供 App 判断是否已配置 */
-export function hasApiToken() {
-  return Boolean(getApiToken());
 }
