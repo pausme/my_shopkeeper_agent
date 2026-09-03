@@ -3,14 +3,15 @@
 
 规则判断（不调 LLM），对齐 PRD 10.2：
 - 最多连续追问 2 次，每次只问 1 个最关键问题
-- 第一问：品类缺失 → 品类四选一
+- 第一问：用户原话不含任何品类关键词（LLM 猜的品类不可信，PRD 10.1 品类为必需）→ 品类四选一
 - 第二问：品类已知 → 该品类的关键参数/偏好题（题库维护）
-- 每问都带快捷选项（含"跳过"），用户跳过或回答"不知道"时由默认假设兜底
+- 每问都带快捷选项（含"跳过"），跳过或回答"不知道"时由默认假设兜底
 - 已有多轮历史（追问后半程）不再追问，避免用户流失
 """
 
 from langgraph.runtime import Runtime
 
+from app.agent.shopping.category_match import guess_category
 from app.agent.shopping.context import ShoppingAgentContext
 from app.agent.shopping.state import ShoppingAgentState
 from app.core.log import logger
@@ -29,9 +30,6 @@ CATEGORY_PARAM_BANK: dict[str, tuple[str, list[str]]] = {
     "母婴用品": ("宝宝多大月龄？", ["0-1 岁", "1-3 岁", "3 岁以上", "不确定", "跳过"]),
 }
 
-# 追问的回答会进入偏好槽位，跳过类回答不进入
-SKIP_ANSWERS = {"跳过", "不确定", "不知道"}
-
 
 async def decide_clarification(
     state: ShoppingAgentState, runtime: Runtime[ShoppingAgentContext]
@@ -47,20 +45,23 @@ async def decide_clarification(
     asked = state.get("clarification_count", 0)
     category = slots.get("category")
 
+    # 品类关键词支持判定：用户原话与改写文本都不含品类词时，
+    # 视为品类缺失（LLM 猜测的品类不可作为跳过追问的依据）
+    keyword_supported = guess_category(
+        state.get("query"), state.get("rewritten_query")
+    ) is not None
+
     question = None
     options: list[str] = []
-    # 品类缺失即追问（PRD 10.1：无法识别品类时友好提示而非强行推荐）。
-    # 不依赖 LLM 意图判定——首轮（无历史）品类缺失就必须补问；
-    # 有显式商品 ID（用户指定对比对象）则无需品类；追问后半程不再追问
     if (
         asked < MAX_CLARIFICATION
         and not has_history
         and not slots.get("product_ids")
     ):
-        if not category:
+        if not keyword_supported:
             question = CATEGORY_QUESTION
             options = CATEGORY_OPTIONS
-        elif not slots.get("preferences"):
+        elif category and not slots.get("preferences"):
             bank_question, bank_options = CATEGORY_PARAM_BANK.get(category, (None, []))
             if bank_question:
                 question = bank_question

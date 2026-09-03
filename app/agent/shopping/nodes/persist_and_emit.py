@@ -34,12 +34,17 @@ async def persist_and_emit(
         for product in ranked
         if reasons.get(product["product_id"], "").strip()
     ]
-    # 兜底：模型一条理由都没给时（罕见），退回前 3 名避免空推荐
-    if not recommended:
-        recommended = [
-            {**product, "reason": recommendation.get("summary", "")[:80]}
-            for product in ranked[:3]
-        ]
+    # 兜底：LLM 给出理由的商品不足 3 款时（PRD 15.1：完整需求至少 3 个推荐），
+    # 用总结摘录补足头部商品，避免点名商品反被截掉
+    if len(recommended) < 3:
+        included = {p["product_id"] for p in recommended}
+        summary_text = recommendation.get("summary", "")[:80] or "综合评分与销量较高，供参考。"
+        for product in ranked:
+            if len(recommended) >= 3:
+                break
+            if product["product_id"] not in included:
+                recommended.append({**product, "reason": summary_text})
+                included.add(product["product_id"])
 
     try:
         repository = runtime.context["shopping_session_repository"]
