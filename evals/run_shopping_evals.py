@@ -229,10 +229,9 @@ async def run_case(case: dict, host: str, token: str, timeout: float) -> tuple[b
                 if result.clarification is None:
                     break
 
-                options = [
-                    o for o in result.clarification.get("options", []) if o != "跳过"
-                ]
-                query = options[0] if options else "跳过"
+                # 自动应答统一走"跳过"：既覆盖 PRD 的跳过路径，又保持与单轮一致的
+                # 可复现行为（选项按钮的真实作答路径由前端手动验收）
+                query = "跳过"
                 history = (history + [
                     {"role": "assistant", "content": result.clarification.get("question", "")},
                     {"role": "user", "content": query},

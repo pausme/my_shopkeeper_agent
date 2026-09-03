@@ -32,17 +32,17 @@ def _assign_verdicts(products: list[dict], risk_summary: dict) -> None:
             product["verdict"] = "最推荐"
             break
 
-    # 到手价最低 → 预算优先
-    if products:
-        cheapest = min(products, key=lambda p: p.get("promotion_price") or p.get("price") or 0)
-        if not cheapest["verdict"]:
-            cheapest["verdict"] = "预算优先"
+    # 到手价最低且未分配 → 预算优先
+    unassigned = [p for p in products if not p["verdict"]]
+    if unassigned:
+        cheapest = min(unassigned, key=lambda p: p.get("promotion_price") or p.get("price") or 0)
+        cheapest["verdict"] = "预算优先"
 
-    # 评分最高 → 品质优先
-    if products:
-        best = max(products, key=lambda p: float(p.get("rating") or 0))
-        if not best["verdict"]:
-            best["verdict"] = "品质优先"
+    # 评分最高且未分配 → 品质优先
+    unassigned = [p for p in products if not p["verdict"]]
+    if unassigned:
+        best = max(unassigned, key=lambda p: float(p.get("rating") or 0))
+        best["verdict"] = "品质优先"
 
 
 async def rank_products(
@@ -60,12 +60,26 @@ async def rank_products(
         risk_summary = state.get("risk_summary") or {}
         slots = state.get("purchase_slots") or {}
         budget_max = slots.get("budget_max")
+        exclusions = [str(e).strip() for e in (slots.get("exclusions") or []) if str(e).strip()]
         top_k = app_config.shopping.rank_top_k
         semantic_floor = app_config.shopping.semantic_floor
 
         if not candidates:
             writer({"type": "progress", "step": step, "status": "success"})
             return {"ranked_products": []}
+
+        # 排除条件程序化执行（PRD 10.1）：品牌精确匹配或标题包含排除词的商品直接剔除
+        if exclusions:
+            candidates = [
+                c
+                for c in candidates
+                if not any(
+                    exclusion
+                    for exclusion in exclusions
+                    if exclusion == (c.get("brand") or "")
+                    or exclusion in (c.get("title") or "")
+                )
+            ]
 
         # 品类硬约束：槽位明确且同品类候选充足时，跨品类商品不参与排序
         category = slots.get("category")

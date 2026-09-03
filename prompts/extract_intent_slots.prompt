@@ -4,7 +4,8 @@
 - recommendation：找商品/求推荐/避坑咨询
 - comparison：明确要求对比两个及以上商品（或指定了 selected_product_ids）
 - summary：询问某个商品的口碑/值不值得买
-- followup：在上一轮推荐基础上追加条件（如"有没有更便宜的""不要白色"）
+- followup：在上一轮推荐基础上追加条件（如"有没有更便宜的""不要白色"）。
+  注意：followup 只在存在最近对话记录时才可能成立；没有记录时同样的输入应判为 recommendation
 
 【槽位定义】（找不到就填 null 或空数组，不要编造）
 - category：品类，仅限 厨房小电器/家居生活/数码配件/母婴用品 之一或 null。
