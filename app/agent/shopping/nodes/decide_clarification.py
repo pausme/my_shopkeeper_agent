@@ -43,27 +43,26 @@ async def decide_clarification(
     writer({"type": "progress", "step": step, "status": "running"})
 
     slots = state.get("purchase_slots") or {}
-    intent = state.get("intent", "recommendation")
     has_history = bool(state.get("history"))
     asked = state.get("clarification_count", 0)
+    category = slots.get("category")
 
     question = None
     options: list[str] = []
+    # 品类缺失即追问（PRD 10.1：无法识别品类时友好提示而非强行推荐）。
+    # 不依赖 LLM 意图判定——首轮（无历史）品类缺失就必须补问；
+    # 有显式商品 ID（用户指定对比对象）则无需品类；追问后半程不再追问
     if (
-        intent == "recommendation"
+        asked < MAX_CLARIFICATION
         and not has_history
-        and asked < MAX_CLARIFICATION
         and not slots.get("product_ids")
     ):
-        category = slots.get("category")
         if not category:
-            # 第一问：品类缺失（无法召回的最关键缺失）
             question = CATEGORY_QUESTION
             options = CATEGORY_OPTIONS
-        else:
-            # 第二问：品类的关键参数/偏好
+        elif not slots.get("preferences"):
             bank_question, bank_options = CATEGORY_PARAM_BANK.get(category, (None, []))
-            if bank_question and not slots.get("preferences"):
+            if bank_question:
                 question = bank_question
                 options = bank_options
 

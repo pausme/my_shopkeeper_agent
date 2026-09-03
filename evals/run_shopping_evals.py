@@ -230,9 +230,12 @@ async def run_case(case: dict, host: str, token: str, timeout: float) -> tuple[b
                     break
 
                 # 自动应答统一走"跳过"：既覆盖 PRD 的跳过路径，又保持与单轮一致的
-                # 可复现行为（选项按钮的真实作答路径由前端手动验收）
+                # 可复现行为（选项按钮的真实作答路径由前端手动验收）。
+                # 关键：续答轮的 history 必须带原始需求，否则改写/意图丢失上下文
+                # 导致品类为空、品类硬过滤失效
                 query = "跳过"
                 history = (history + [
+                    {"role": "user", "content": turn["question"]},
                     {"role": "assistant", "content": result.clarification.get("question", "")},
                     {"role": "user", "content": query},
                 ])[-6:]

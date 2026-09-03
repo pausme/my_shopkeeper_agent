@@ -13,6 +13,7 @@ from langchain_core.prompts import PromptTemplate
 from langgraph.runtime import Runtime
 
 from app.agent.llm import llm
+from app.agent.shopping.category_match import guess_category
 from app.agent.shopping.context import ShoppingAgentContext
 from app.agent.shopping.state import ShoppingAgentState, format_history
 from app.core.log import logger
@@ -68,6 +69,13 @@ async def extract_intent_slots(
             if result.get(key) is None:
                 result[key] = default
         intent = result.get("intent") or "recommendation"
+
+        # 品类安全网：LLM 漏抽时用关键词映射兜底（品类硬过滤依赖它，不能为空）
+        if not result["category"]:
+            fallback = guess_category(query, state.get("rewritten_query"))
+            if fallback:
+                result["category"] = fallback
+                logger.info(f"LLM 品类缺失，关键词兜底补全：{fallback}")
 
         logger.info(
             f"导购意图：{intent}，槽位：{result}，耗时 {time.monotonic() - started:.2f}s"
