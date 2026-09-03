@@ -89,6 +89,40 @@ async def get_rerank_client():
     return rerank_client_manager
 
 
+async def get_shopping_service():
+    """组装导购服务：请求级 meta 会话 + 商品域仓储 + 向量/评价检索"""
+
+    from app.clients.embedding_client_manager import embedding_client_manager
+    from app.clients.es_client_manager import es_client_manager
+    from app.clients.qdrant_client_manager import qdrant_client_manager
+    from app.repositories.es.review_es_repository import ReviewESRepository
+    from app.repositories.mysql.meta.product_repository import ProductRepository
+    from app.repositories.qdrant.product_qdrant_repository import (
+        ProductQdrantRepository,
+    )
+    from app.services.shopping_agent_service import ShoppingAgentService
+
+    async with meta_mysql_client_manager.session_factory() as session:
+        yield ShoppingAgentService(
+            session=session,
+            product_repository=ProductRepository(session),
+            product_qdrant_repository=ProductQdrantRepository(qdrant_client_manager.client),
+            review_es_repository=ReviewESRepository(es_client_manager.client),
+            embedding_client=embedding_client_manager.client,
+        )
+
+
+async def get_shopping_session_repository():
+    """导购会话仓储（供列表/详情/反馈等轻接口使用）"""
+
+    from app.repositories.mysql.meta.shopping_repositories import (
+        ShoppingSessionRepository,
+    )
+
+    async with meta_mysql_client_manager.session_factory() as session:
+        yield ShoppingSessionRepository(session)
+
+
 async def get_query_service(
     meta_mysql_repository: Annotated[
         MetaMySQLRepository, Depends(get_meta_mysql_repository)

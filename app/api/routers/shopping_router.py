@@ -1,0 +1,146 @@
+"""
+AI 商品决策助手（导购）路由
+
+- POST /api/shopping/query            导购问答（SSE：progress/clarification/recommendation/comparison/error）
+- POST /api/shopping/feedback         推荐反馈
+- GET  /api/shopping/sessions         会话列表
+- GET  /api/shopping/sessions/{id}    会话详情（消息历史）
+- POST /api/shopping/compare          指定商品横向对比
+- GET  /api/shopping/products/{id}/summary  商品摘要与风险
+
+接口规则（PRD）：不暴露 SQL/提示词/内部向量分值；反馈可追溯 session_id + message_id
+"""
+
+from typing import Annotated, Literal
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.params import Header
+from pydantic import BaseModel, Field
+from starlette.responses import StreamingResponse
+
+from app.api.dependencies import get_shopping_service
+from app.api.routers.query_router import require_api_token
+from app.services.shopping_agent_service import ShoppingAgentService
+
+shopping_router = APIRouter(prefix="/api/shopping")
+
+
+class ShoppingQuerySchema(BaseModel):
+    query: str
+    session_id: str | None = None
+    history: list[dict] = []
+    selected_product_ids: list[str] = []
+    scene_tag: str | None = None
+    # 本会话已经历的追问轮数：前端在用户回答追问后随下一轮请求带回
+    clarification_count: int = 0
+
+
+class FeedbackSchema(BaseModel):
+    session_id: str
+    message_id: str | None = None
+    feedback_type: Literal[
+        "helpful", "unhelpful", "not_accurate", "too_expensive", "too_few", "not_understand"
+    ]
+    product_id: str | None = None
+    comment: str | None = None
+
+
+class CompareSchema(BaseModel):
+    product_ids: list[str] = Field(min_length=2, max_length=5)
+    query: str | None = None
+    session_id: str | None = None
+
+
+@shopping_router.post(
+    "/query", dependencies=[Depends(require_api_token)]
+)
+async def shopping_query(
+    body: ShoppingQuerySchema,
+    service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
+    x_user_id: Annotated[str | None, Header()] = None,
+):
+    """发起导购问答：流式返回追问、召回、分析、推荐与对比"""
+
+    return StreamingResponse(
+        service.query(
+            body.query,
+            session_id=body.session_id,
+            history=body.history,
+            selected_product_ids=body.selected_product_ids,
+            scene_tag=body.scene_tag,
+            user_id=x_user_id,
+            clarification_count=body.clarification_count,
+        ),
+        media_type="text/event-stream",
+    )
+
+
+@shopping_router.post("/feedback", dependencies=[Depends(require_api_token)])
+async def shopping_feedback(
+    body: FeedbackSchema,
+    service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
+    x_user_id: Annotated[str | None, Header()] = None,
+):
+    """记录用户对推荐结果的反馈"""
+
+    feedback_id = await service.shopping_session_repository.save_feedback(
+        body.session_id,
+        body.message_id,
+        body.feedback_type,
+        product_id=body.product_id,
+        user_id=x_user_id,
+        comment=body.comment,
+    )
+    await service.session.commit()
+    return {"ok": True, "feedback_id": feedback_id}
+
+
+@shopping_router.get("/sessions", dependencies=[Depends(require_api_token)])
+async def shopping_sessions(
+    service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
+    x_user_id: Annotated[str | None, Header()] = None,
+):
+    """获取用户的历史导购会话"""
+
+    return await service.shopping_session_repository.list_sessions(x_user_id)
+
+
+@shopping_router.get("/sessions/{session_id}", dependencies=[Depends(require_api_token)])
+async def shopping_session_detail(
+    session_id: str,
+    service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
+):
+    """获取单个会话的消息历史"""
+
+    messages = await service.shopping_session_repository.get_session_messages(session_id)
+    if not messages:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return {"session_id": session_id, "messages": messages}
+
+
+@shopping_router.post("/compare", dependencies=[Depends(require_api_token)])
+async def shopping_compare(
+    body: CompareSchema,
+    service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
+):
+    """对多个商品生成结构化横向对比"""
+
+    table = await service.compare_products(body.product_ids)
+    if table is None:
+        raise HTTPException(status_code=404, detail="商品不存在或数量不足")
+    return {"session_id": body.session_id, "comparison": table}
+
+
+@shopping_router.get(
+    "/products/{product_id}/summary", dependencies=[Depends(require_api_token)]
+)
+async def shopping_product_summary(
+    product_id: str,
+    service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
+):
+    """返回商品简介、评价摘要和风险提示"""
+
+    summary = await service.product_summary(product_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="商品不存在")
+    return summary
