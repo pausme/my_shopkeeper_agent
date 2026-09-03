@@ -58,22 +58,47 @@ def main():
     message_id = ""
     recommended_count = 0
     try:
-        for event in post_sse(
-            args.host,
-            "/api/shopping/query",
-            {"query": "想买一个空气炸锅，预算500以内，帮我推荐一下"},
-            token,
-        ):
-            if event["type"] == "recommendation":
+        # 品类参数追问上线后，完整需求也可能先收到 clarification——自动用快捷选项续答
+        query = "想买一个空气炸锅，预算500以内，帮我推荐一下"
+        history: list[dict] = []
+        clarification_count = 0
+        for _round in range(3):
+            events = list(
+                post_sse(
+                    args.host,
+                    "/api/shopping/query",
+                    {
+                        "query": query,
+                        "history": history,
+                        "clarification_count": clarification_count,
+                        **({"session_id": session_id} if session_id else {}),
+                    },
+                    token,
+                )
+            )
+            recommendation = next((e for e in events if e["type"] == "recommendation"), None)
+            clarification = next((e for e in events if e["type"] == "clarification"), None)
+            error_event = next((e for e in events if e["type"] == "error"), None)
+
+            if recommendation:
                 got_recommendation = True
-                session_id = event.get("session_id", "")
-                message_id = event.get("message_id", "")
-                recommended = event.get("recommended_products", [])
-                recommended_count = len(recommended)
-                print(f"  推荐商品 {recommended_count} 款，summary: {event.get('summary', '')[:50]}")
+                session_id = recommendation.get("session_id", session_id)
+                message_id = recommendation.get("message_id", "")
+                recommended_count = len(recommendation.get("recommended_products", []))
+                print(f"  推荐商品 {recommended_count} 款，summary: {recommendation.get('summary', '')[:50]}")
                 break
-            if event["type"] == "error":
-                failures.append(f"用例1链路错误：{event['message'][:100]}")
+            if clarification:
+                options = [o for o in clarification.get("options", []) if o != "跳过"]
+                query = options[0] if options else "跳过"
+                session_id = clarification.get("session_id", session_id)
+                clarification_count = clarification.get("clarification_count", clarification_count)
+                history = history[-4:] + [
+                    {"role": "assistant", "content": clarification.get("question", "")},
+                    {"role": "user", "content": query},
+                ]
+                continue
+            if error_event:
+                failures.append(f"用例1链路错误：{error_event['message'][:100]}")
                 break
     except Exception as exc:  # noqa: BLE001
         failures.append(f"用例1异常：{exc}")

@@ -199,30 +199,48 @@ async def run_case(case: dict, host: str, token: str, timeout: float) -> tuple[b
 
     try:
         for turn in turns:
-            payload = {
-                "query": turn["question"],
-                "history": history,
-                "clarification_count": clarification_count,
-            }
-            if turn.get("selected_product_ids"):
-                payload["selected_product_ids"] = turn["selected_product_ids"]
-            if session_id:
-                payload["session_id"] = session_id
-
+            query = turn["question"]
             result = CaseResult()
-            result.events = await asyncio.to_thread(
-                stream_once, host, payload, token, timeout
-            )
+            # 品类参数追问上线后，一轮请求可能以 clarification 结束——
+            # runner 自动用快捷选项续答（跳过类除外），最多续答 3 次防失控
+            for _round in range(3):
+                payload = {
+                    "query": query,
+                    "history": history,
+                    "clarification_count": clarification_count,
+                }
+                if turn.get("selected_product_ids"):
+                    payload["selected_product_ids"] = turn["selected_product_ids"]
+                if session_id:
+                    payload["session_id"] = session_id
+
+                result.events = await asyncio.to_thread(
+                    stream_once, host, payload, token, timeout
+                )
+                events = result.events
+
+                # 从事件流提取多轮上下文：session、追问计数
+                for event in events:
+                    if event.get("type") in ("progress", "recommendation", "clarification"):
+                        session_id = event.get("session_id", session_id)
+                    if event.get("type") == "clarification":
+                        clarification_count = event.get("clarification_count", clarification_count)
+
+                if result.clarification is None:
+                    break
+
+                options = [
+                    o for o in result.clarification.get("options", []) if o != "跳过"
+                ]
+                query = options[0] if options else "跳过"
+                history = (history + [
+                    {"role": "assistant", "content": result.clarification.get("question", "")},
+                    {"role": "user", "content": query},
+                ])[-6:]
+
             results.append(result)
 
-            # 从事件流提取多轮上下文：session、追问计数、文本历史
-            for event in result.events:
-                if event.get("type") in ("progress", "recommendation", "clarification"):
-                    session_id = event.get("session_id", session_id)
-                if event.get("type") == "clarification":
-                    clarification_count = event.get("clarification_count", clarification_count)
-
-            # 助手侧文本：追问用问题本身，推荐用总结
+            # 本轮最终助手文本进多轮上下文：追问用问题本身，推荐用总结
             assistant_content = (
                 result.clarification.get("question", "")
                 if result.clarification is not None
