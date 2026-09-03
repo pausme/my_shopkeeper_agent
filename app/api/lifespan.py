@@ -17,6 +17,7 @@ from app.clients.mysql_client_manager import (
     meta_mysql_client_manager,
 )
 from app.clients.qdrant_client_manager import qdrant_client_manager
+from app.clients.rerank_client_manager import rerank_client_manager
 
 
 @asynccontextmanager
@@ -29,6 +30,13 @@ async def lifespan(app: FastAPI):
     es_client_manager.init()
     meta_mysql_client_manager.init()
     dw_mysql_client_manager.init()
+    # rerank 精排服务是可选增强：初始化失败不阻断启动，调用时会自动降级
+    try:
+        rerank_client_manager.init()
+    except Exception as e:  # noqa: BLE001
+        from app.core.log import logger
+
+        logger.warning(f"rerank 服务初始化失败，召回精排将回退原始排序：{e}")
 
     # 自动建表：用户/会话/消息三张业务表不存在时创建（已存在则跳过，不影响数据）
     from app.models.base import Base
@@ -46,3 +54,4 @@ async def lifespan(app: FastAPI):
     await es_client_manager.close()
     await meta_mysql_client_manager.close()
     await dw_mysql_client_manager.close()
+    await rerank_client_manager.close()

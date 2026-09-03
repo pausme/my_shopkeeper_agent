@@ -39,8 +39,18 @@ async def run_sql(state: DataAgentState, runtime: Runtime[DataAgentContext]):
         # 真实数据库访问统一封装在仓储层，节点只负责从状态取 SQL 并触发执行
         result = await dw_mysql_repository.run(sql)
         logger.info(f"SQL执行结果：{result}")
+        rows = result if isinstance(result, list) else [result]
+        empty = len(rows) == 0
+
+        # 首次空结果且尚未自检过：不发 result 事件，转交 self_check 分析重试；
+        # 自检后的第二轮无论是否为空都正常收尾
+        if empty and not state.get("empty_retry_done"):
+            writer({"type": "progress", "step": step, "status": "success"})
+            return {"result_data": rows, "result_empty": True}
+
         writer({"type": "progress", "step": step, "status": "success"})
-        writer({"type": "result", "data": result})
+        writer({"type": "result", "data": rows})
+        return {"result_data": rows, "result_empty": empty}
 
     except Exception as e:
         logger.error(f"{step} failed: {e}")

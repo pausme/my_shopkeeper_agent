@@ -84,6 +84,14 @@ class DataAgentState(TypedDict):
     # SQL 修正重试计数：validate 校验失败进入 correct_sql 时累加，超过上限后走 fail_sql 终止
     sql_retry_count: int
 
+    # 查询结果数据与是否为空：run_sql 写入；空结果且未自检过时进入 self_check 分支
+    result_data: list
+    result_empty: bool
+    # 空结果自检是否已执行：保证自检重试至多一轮，避免无限循环
+    empty_retry_done: bool
+    # self_check 生成的重试提示，compose_sql 提示词在第二轮生成时注入
+    self_check_hint: str
+
 
 def format_history(history: list[dict] | None, max_messages: int = 6) -> str:
     """把最近对话渲染成提示词可读的文本，超出的旧消息截断

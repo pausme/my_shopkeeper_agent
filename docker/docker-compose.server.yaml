@@ -87,6 +87,29 @@ services:
         limits:
           memory: 2g
 
+  # rerank 精排服务（bge-reranker-base int8 ONNX），供召回节点做相关性重排
+  # 4G 内存机器带不动第二个 TEI（曾引发整机内存风暴），已用 profiles 隔离：
+  # 默认不启动；升级到 8G+ 内存后执行
+  #   docker compose -f docker-compose.server.yaml --profile rerank up -d reranker
+  # 即可启用，应用侧检测到服务离线会自动降级为原始排序
+  reranker:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.8
+    platform: linux/amd64
+    container_name: reranker
+    restart: unless-stopped
+    profiles: ["rerank"]
+    ports:
+      - "127.0.0.1:8082:80"
+    environment:
+      MODEL_ID: /models/bge-reranker-base
+      MAX_CONCURRENT_REQUESTS: "8"
+    volumes:
+      - ./embedding/bge-reranker-base:/models/bge-reranker-base
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
   frontend:
     image: nginx:1.27-alpine
     container_name: frontend

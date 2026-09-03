@@ -41,6 +41,7 @@ class QueryService:
         column_qdrant_repository: ColumnQdrantRepository,
         metric_qdrant_repository: MetricQdrantRepository,
         value_es_repository: ValueESRepository,
+        rerank_client=None,
     ):
         # MySQL 仓储分别负责元数据补全和真实数仓环境信息读取
         self.meta_mysql_repository = meta_mysql_repository
@@ -51,6 +52,8 @@ class QueryService:
         self.column_qdrant_repository = column_qdrant_repository
         self.metric_qdrant_repository = metric_qdrant_repository
         self.value_es_repository = value_es_repository
+        # rerank 精排客户端；未注入时召回节点自动回退原始排序
+        self.rerank_client = rerank_client
 
         # 进程内查询缓存：query 文本 -> (过期时间戳, SSE 事件对象列表)
 
@@ -101,6 +104,7 @@ class QueryService:
             value_es_repository=self.value_es_repository,
             meta_mysql_repository=self.meta_mysql_repository,
             dw_mysql_repository=self.dw_mysql_repository,
+            rerank_client=self.rerank_client,
         )
         events: list[dict] = []
         try:

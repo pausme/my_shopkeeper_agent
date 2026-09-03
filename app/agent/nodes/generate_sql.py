@@ -35,6 +35,8 @@ async def generate_sql(state: DataAgentState, runtime: Runtime[DataAgentContext]
         # 生成消费改写后的独立问题（无历史时等于原问题），避免省略式追问直接进提示词
         query = state.get("rewritten_query") or state["query"]
         history_text = format_history(state.get("history")) or "无"
+        # 空结果自检后的第二轮生成会带提示；首轮为"无"
+        self_check_hint = state.get("self_check_hint") or "无"
 
         prompt = PromptTemplate(
             template=load_prompt("compose_sql"),
@@ -45,6 +47,7 @@ async def generate_sql(state: DataAgentState, runtime: Runtime[DataAgentContext]
                 "db_info",
                 "query",
                 "history",
+                "self_check_hint",
             ],
         )
         # compose_sql 要求输出 {selected_tables, selected_metrics, sql} 的 JSON 对象
@@ -64,6 +67,7 @@ async def generate_sql(state: DataAgentState, runtime: Runtime[DataAgentContext]
                 "db_info": yaml_dump(db_info, allow_unicode=True, sort_keys=False),
                 "query": query,
                 "history": history_text,
+                "self_check_hint": self_check_hint,
             }
         )
 

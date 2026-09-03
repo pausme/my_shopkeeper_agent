@@ -50,11 +50,27 @@ async def recall_metric(state: DataAgentState, runtime: Runtime[DataAgentContext
                 if metric_info.id not in metric_info_map:
                     metric_info_map[metric_info.id] = metric_info
 
+        candidates: list[MetricInfo] = list(metric_info_map.values())
+
+        # 与字段召回相同：候选多于阈值时用 reranker 精排，保留最相关前 3 个指标
+        rerank_manager = runtime.context.get("rerank_client")
+        top_k = 3
+        if rerank_manager is not None and len(candidates) > top_k:
+            rerank_query = state.get("rewritten_query") or state["query"]
+            texts = [
+                f"{metric_info.name}：{metric_info.description}" for metric_info in candidates
+            ]
+            indices = await rerank_manager.rerank(rerank_query, texts, top_k=top_k)
+            if indices is not None:
+                logger.info(
+                    f"指标精排：{len(candidates)} -> {[candidates[i].id for i in indices]}"
+                )
+                candidates = [candidates[i] for i in indices]
+
         # 写回 state 的是业务实体列表，后续过滤节点不需要关心 Qdrant 原始 point 结构
-        retrieved_metric_infos: list[MetricInfo] = list(metric_info_map.values())
-        logger.info(f"检索到指标信息：{list(metric_info_map.keys())}")
+        logger.info(f"检索到指标信息：{[metric.id for metric in candidates]}")
         writer({"type": "progress", "step": step, "status": "success"})
-        return {"retrieved_metric_infos": retrieved_metric_infos}
+        return {"retrieved_metric_infos": candidates}
     except Exception as e:
         logger.error(f"{step} failed: {e}")
         writer({"type": "progress", "step": step, "status": "error"})

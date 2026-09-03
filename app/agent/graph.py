@@ -6,6 +6,7 @@
 整体流程：结合历史改写追问 -> 抽取关键词并用 LLM 统一扩展检索词 -> 并行三路召回 ->
 合并补齐上下文 -> 补充日期与数据库环境 -> 一次调用完成候选过滤与 SQL 生成 -> 校验 执行
 SQL 校验失败会循环修正（上限 MAX_SQL_RETRIES 次），重试耗尽则走 fail_sql 终止并返回错误
+查询执行结果为空时会进入 self_check 节点分析原因并带提示重试一轮
 """
 
 import asyncio
@@ -26,6 +27,7 @@ from app.agent.nodes.recall_metric import recall_metric
 from app.agent.nodes.recall_value import recall_value
 from app.agent.nodes.rewrite_question import rewrite_question
 from app.agent.nodes.run_sql import run_sql
+from app.agent.nodes.self_check import self_check
 from app.agent.nodes.validate_sql import validate_sql
 from app.agent.state import DataAgentState
 from app.clients.embedding_client_manager import embedding_client_manager
@@ -35,6 +37,7 @@ from app.clients.mysql_client_manager import (
     meta_mysql_client_manager,
 )
 from app.clients.qdrant_client_manager import qdrant_client_manager
+from app.clients.rerank_client_manager import rerank_client_manager
 from app.repositories.es.value_es_repository import ValueESRepository
 from app.repositories.mysql.dw.dw_mysql_repository import DWMySQLRepository
 from app.repositories.mysql.meta.meta_mysql_repository import MetaMySQLRepository
@@ -58,6 +61,7 @@ graph_builder.add_node("validate_sql", validate_sql)
 graph_builder.add_node("correct_sql", correct_sql)
 graph_builder.add_node("fail_sql", fail_sql)
 graph_builder.add_node("run_sql", run_sql)
+graph_builder.add_node("self_check", self_check)
 
 # 从用户问题开始：先结合历史把追问改写成独立问题，再抽取关键词并扩展检索词
 graph_builder.add_edge(START, "rewrite_question")
@@ -99,7 +103,22 @@ graph_builder.add_conditional_edges(
 # 修正后的 SQL 回到校验节点重新校验，形成闭环；fail_sql 只报错终止，不执行
 graph_builder.add_edge("correct_sql", "validate_sql")
 graph_builder.add_edge("fail_sql", END)
-graph_builder.add_edge("run_sql", END)
+
+
+# 执行结果为空且尚未自检过时，进入空结果自检并重试一轮生成；否则正常结束
+def route_after_run(state: DataAgentState) -> str:
+    if state.get("result_empty") and not state.get("empty_retry_done"):
+        return "self_check"
+    return "end"
+
+
+graph_builder.add_conditional_edges(
+    source="run_sql",
+    path=route_after_run,
+    path_map={"self_check": "self_check", "end": END},
+)
+# 自检完成后带提示重新生成 SQL，再次经过校验与执行
+graph_builder.add_edge("self_check", "generate_sql")
 
 # 编译后的 graph 是对外使用的 Agent 执行入口
 graph = graph_builder.compile()
@@ -117,6 +136,7 @@ if __name__ == "__main__":
         es_client_manager.init()
         meta_mysql_client_manager.init()
         dw_mysql_client_manager.init()
+        rerank_client_manager.init()
 
         # Meta MySQL 用来补齐元数据，DW MySQL 用来读取数据库方言和版本
         async with (
@@ -144,6 +164,7 @@ if __name__ == "__main__":
                 value_es_repository=value_es_repository,
                 meta_mysql_repository=meta_mysql_repository,
                 dw_mysql_repository=dw_mysql_repository,
+                rerank_client=rerank_client_manager,
             )
 
             # stream_mode="custom" 会接收各节点通过 runtime.stream_writer 写出的进度信息

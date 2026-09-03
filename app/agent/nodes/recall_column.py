@@ -50,11 +50,27 @@ async def recall_column(state: DataAgentState, runtime: Runtime[DataAgentContext
                 if column_info.id not in column_info_map:
                     column_info_map[column_info.id] = column_info
 
-        # 写回 state 的是去重后的 ColumnInfo 列表，不暴露 Qdrant 原始 point 结构
-        retrieved_column_infos: list[ColumnInfo] = list(column_info_map.values())
+        candidates: list[ColumnInfo] = list(column_info_map.values())
 
+        # 粗排候选较多时用 reranker 精排：以改写后的完整问题为查询，保留最相关前 5 个字段。
+        # 精排是增强而非依赖——服务不可用时保持原始排序继续走
+        rerank_manager = runtime.context.get("rerank_client")
+        top_k = 5
+        if rerank_manager is not None and len(candidates) > top_k:
+            rerank_query = state.get("rewritten_query") or state["query"]
+            texts = [
+                f"{column_info.name}：{column_info.description}" for column_info in candidates
+            ]
+            indices = await rerank_manager.rerank(rerank_query, texts, top_k=top_k)
+            if indices is not None:
+                logger.info(
+                    f"字段精排：{len(candidates)} -> {[candidates[i].id for i in indices]}"
+                )
+                candidates = [candidates[i] for i in indices]
+
+        # 写回 state 的是去重与精排后的 ColumnInfo 列表，不暴露 Qdrant 原始 point 结构
         writer({"type": "progress", "step": step, "status": "success"})
-        return {"retrieved_column_infos": retrieved_column_infos}
+        return {"retrieved_column_infos": candidates}
     except Exception as e:
         logger.error(f"{step} failed: {e}")
         writer({"type": "progress", "step": step, "status": "error"})

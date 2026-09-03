@@ -31,6 +31,7 @@ const nodes: FlowNode[] = [
   { step: "校验SQL", x: 410, y: 692 },
   { step: "校正SQL", x: 670, y: 692 },
   { step: "执行SQL", x: 410, y: 788 },
+  { step: "空结果自检", x: 670, y: 788, w: 156 },
 ];
 
 const connectors = [
@@ -49,6 +50,9 @@ const connectors = [
   "M488 712 L588 712",
   // 校正 SQL 后回到校验节点重新校验，形成修正闭环
   "M670 688 L670 670 L500 670 L500 712 L492 712",
+  // 空结果自检：执行为空时进入自检，带提示回到生成节点重试一轮
+  "M488 808 L586 808",
+  "M670 784 L670 620 L492 620",
 ];
 
 const branchLabels = [
@@ -56,6 +60,8 @@ const branchLabels = [
   { text: "有误", x: 524, y: 700 },
   { text: "重试 ≤3 次", x: 528, y: 660 },
   { text: "超限则终止", x: 608, y: 745 },
+  { text: "结果为空", x: 500, y: 798 },
+  { text: "带提示重试一轮", x: 620, y: 640 },
 ];
 
 function getStatusMap(steps: StepState[]) {
