@@ -179,6 +179,12 @@ async def main():
 
         for index, case in enumerate(cases, start=1):
             ok, detail, elapsed = await run_case(case, context, context["dw_mysql_repository"], args.timeout)
+            # 供应商断连/超时等链路抖动导致的失败重试一次：
+            # 真实的质量问题会连挂两次，网络抖动通常第二次即过
+            if not ok and ("链路异常" in detail or "超时" in detail):
+                ok, detail, elapsed = await run_case(
+                    case, context, context["dw_mysql_repository"], args.timeout
+                )
             passed += int(ok)
             by_category.setdefault(case["category"], []).append(ok)
             mark = "PASS" if ok else "FAIL"
