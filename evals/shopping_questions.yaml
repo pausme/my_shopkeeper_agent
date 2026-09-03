@@ -1,0 +1,152 @@
+# 导购链路评测集（AI 商品决策助手）
+#
+# 每条用例对 /api/shopping/query 发起真实请求（含 LLM），按声明式断言检查事件流。
+# 断言字段（checks）由 run_shopping_evals.py 实现：
+#   recommended_min      推荐商品数下限（M8.4 验收：完整需求 >= 3）
+#   contains_product     推荐列表必须包含的商品 ID
+#   excludes_product     推荐列表必须排除的商品 ID
+#   all_category         所有推荐商品的品类
+#   max_price            所有推荐商品到手价上限
+#   reasons_nonempty     每条推荐理由非空（M8.4 验收）
+#   mentions_risk        中高风险商品的理由/总结须提及风险
+#   muying_caution       母婴推荐理由须含谨慎话术（M9.1）
+#   comparison_min_rows  对比表行数下限（M8.4 验收：>= 3）
+#   text_intent_comparison  文本对比意图：对比表或推荐覆盖两款指定商品
+#
+# 多轮用例用 turns 顺序执行，前面的 clarification 事件自动成为后续轮次的 history。
+# acceptance: true 的用例对应 PRD 第 15 节验收标准。
+
+# ========== 一、推荐 ==========
+- id: s001
+  category: 推荐
+  question: 想买一个空气炸锅，预算500以内，帮我推荐一下
+  expect: recommendation
+  checks:
+    contains_product: P0005
+    reasons_nonempty: true
+
+- id: s002
+  category: 推荐
+  question: 推荐几款值得入手的母婴用品
+  expect: recommendation
+  acceptance: true
+  checks:
+    recommended_min: 3
+    all_category: 母婴用品
+    reasons_nonempty: true
+    muying_caution: true
+
+- id: s003
+  category: 推荐
+  question: 预算300以内，买点实用的厨房小电器
+  expect: recommendation
+  checks:
+    max_price: 300
+    all_category: 厨房小电器
+
+- id: s004
+  category: 推荐
+  question: 给刚出生的宝宝买东西，该准备点什么
+  expect: recommendation
+  checks:
+    all_category: 母婴用品
+
+- id: s005
+  category: 推荐
+  question: 推荐几款数码配件，不要小米的
+  expect: recommendation
+  checks:
+    excludes_product: P0016
+    all_category: 数码配件
+
+- id: s006
+  category: 推荐
+  question: 象术颈部按摩仪值得买吗
+  expect: recommendation
+  checks:
+    contains_product: P0010
+
+# ========== 二、对比 ==========
+- id: s007
+  category: 对比
+  question: 对比一下这三款厨房小电器
+  selected_product_ids: [P0001, P0002, P0003]
+  expect: recommendation
+  acceptance: true
+  checks:
+    comparison_min_rows: 3
+
+- id: s008
+  category: 对比
+  question: 米家破壁机和九阳豆浆机哪个好
+  expect: recommendation
+  checks:
+    text_intent_comparison: [P0001, P0002]
+
+- id: s009
+  category: 对比
+  question: 这两款放一起比比看
+  selected_product_ids: [P0001, P0019]
+  expect: recommendation
+  checks:
+    comparison_min_rows: 2
+
+# ========== 三、避坑 ==========
+- id: s010
+  category: 避坑
+  question: 摩飞空气炸锅有什么坑？值不值得买
+  expect: recommendation
+  checks:
+    mentions_risk: true
+
+- id: s011
+  category: 避坑
+  question: 买落地灯要注意什么，帮我推荐一款
+  expect: recommendation
+  checks:
+    all_category: 家居生活
+
+- id: s012
+  category: 避坑
+  question: 小熊恒温电热水壶怎么样，靠谱吗
+  expect: recommendation
+  checks:
+    contains_product: P0004
+
+# ========== 四、追问 ==========
+- id: s013
+  category: 追问
+  question: 帮我推荐点好东西
+  expect: clarification
+
+- id: s014
+  category: 追问
+  turns:
+    - question: 帮我推荐点好东西
+      expect: clarification
+    - question: 厨房小电器吧，预算300，一个人住
+      expect: recommendation
+      checks:
+        max_price: 300
+        all_category: 厨房小电器
+  acceptance: true
+
+- id: s015
+  category: 追问
+  turns:
+    - question: 推荐几款数码配件
+      expect: recommendation
+    - question: 有没有更便宜的
+      expect: recommendation
+      checks:
+        all_category: 数码配件
+
+- id: s016
+  category: 追问
+  turns:
+    - question: 推荐几款厨房小电器
+      expect: recommendation
+    - question: 那母婴的呢
+      expect: recommendation
+      checks:
+        all_category: 母婴用品

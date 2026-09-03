@@ -87,6 +87,16 @@ class RerankConfig:
 
 
 @dataclass
+class ShoppingConfig:
+    """导购链路检索参数配置"""
+
+    recall_limit: int
+    recall_threshold: float
+    rank_top_k: int
+    semantic_floor: float
+
+
+@dataclass
 class LLMConfig:
     """大模型调用配置"""
 
@@ -106,6 +116,7 @@ class AppConfig:
     embedding: EmbeddingConfig
     es: ESConfig
     rerank: RerankConfig
+    shopping: ShoppingConfig
     llm: LLMConfig
 
 

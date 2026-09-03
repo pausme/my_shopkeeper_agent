@@ -8,7 +8,7 @@ shopping_session / shopping_message / shopping_recommendation / shopping_feedbac
 import json
 import uuid
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.shopping import (
@@ -102,6 +102,23 @@ class ShoppingSessionRepository:
             }
             for row in result.scalars()
         ]
+
+    async def delete_session(self, session_id: str) -> bool:
+        """逻辑删除会话及其消息（M9.3 隐私控制：用户可清除自己的导购历史）"""
+
+        result = await self.session.execute(
+            select(ShoppingSessionMySQL).where(ShoppingSessionMySQL.session_id == session_id)
+        )
+        existing = result.scalar_one_or_none()
+        if existing is None:
+            return False
+        existing.is_deleted = 1
+        await self.session.execute(
+            update(ShoppingMessageMySQL)
+            .where(ShoppingMessageMySQL.session_id == session_id)
+            .values(is_deleted=1)
+        )
+        return True
 
     # ---------- 消息与推荐结果 ----------
 

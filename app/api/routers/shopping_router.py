@@ -118,6 +118,48 @@ async def shopping_session_detail(
     return {"session_id": session_id, "messages": messages}
 
 
+class EventSchema(BaseModel):
+    """前端行为埋点（M8.3）：点击/曝光等事件的统一上报入口"""
+
+    session_id: str
+    message_id: str | None = None
+    event_type: str = Field(min_length=1, max_length=64)
+    product_id: str | None = None
+    event_data: dict = {}
+
+
+@shopping_router.post("/events", dependencies=[Depends(require_api_token)])
+async def shopping_event(
+    body: EventSchema,
+    service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
+    x_user_id: Annotated[str | None, Header()] = None,
+):
+    """记录前端行为埋点事件（商品点击等）"""
+
+    event_data = dict(body.event_data)
+    if body.product_id:
+        event_data["product_id"] = body.product_id
+    await service.shopping_session_repository.save_event(
+        body.session_id, body.message_id, x_user_id, body.event_type, event_data
+    )
+    await service.session.commit()
+    return {"ok": True}
+
+
+@shopping_router.delete("/sessions/{session_id}", dependencies=[Depends(require_api_token)])
+async def delete_shopping_session(
+    session_id: str,
+    service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
+):
+    """删除导购会话（M9.3 隐私控制：用户可清除自己的咨询历史）"""
+
+    deleted = await service.shopping_session_repository.delete_session(session_id)
+    await service.session.commit()
+    if not deleted:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return {"ok": True}
+
+
 @shopping_router.post("/compare", dependencies=[Depends(require_api_token)])
 async def shopping_compare(
     body: CompareSchema,

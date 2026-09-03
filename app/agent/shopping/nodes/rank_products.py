@@ -9,15 +9,11 @@ from langgraph.runtime import Runtime
 
 from app.agent.shopping.context import ShoppingAgentContext
 from app.agent.shopping.state import ShoppingAgentState
+from app.conf.app_config import app_config
 from app.core.log import logger
-
-TOP_K = 5
 
 # 风险等级惩罚系数：高风险大幅降权但不一票否决（风险已在推荐理由中如实呈现）
 RISK_PENALTY = {"low": 0.0, "medium": 0.05, "high": 0.25, "unknown": 0.1}
-
-# 语义地板分：低于该分的候选与需求明显跑题；过滤后不足 3 款时回退全量
-SEMANTIC_FLOOR = 0.4
 
 
 async def rank_products(
@@ -34,6 +30,8 @@ async def rank_products(
         risk_summary = state.get("risk_summary") or {}
         slots = state.get("purchase_slots") or {}
         budget_max = slots.get("budget_max")
+        top_k = app_config.shopping.rank_top_k
+        semantic_floor = app_config.shopping.semantic_floor
 
         if not candidates:
             writer({"type": "progress", "step": step, "status": "success"})
@@ -47,7 +45,7 @@ async def rank_products(
                 candidates = same_category
 
         # 语义地板分：过滤明显跑题候选；过滤后不足 3 款则保留原候选
-        on_topic = [c for c in candidates if float(c.get("semantic_score", 0)) >= SEMANTIC_FLOOR]
+        on_topic = [c for c in candidates if float(c.get("semantic_score", 0)) >= semantic_floor]
         if len(on_topic) >= 3:
             candidates = on_topic
 
@@ -78,7 +76,7 @@ async def rank_products(
         non_high = [c for c in ranked if risk_summary.get(c["product_id"], {}).get("level") != "high"]
         pool = non_high if non_high else ranked
         pool.sort(key=lambda c: c["final_score"], reverse=True)
-        ranked_products = pool[:TOP_K]
+        ranked_products = pool[:top_k]
 
         logger.info(f"排序完成：{len(candidates)} -> {len(ranked_products)}，"
                     f"头部：{[(c['product_id'], c['final_score']) for c in ranked_products[:3]]}")

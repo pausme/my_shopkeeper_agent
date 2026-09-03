@@ -42,6 +42,13 @@ rerank:
   host: localhost
   port: 8082
 
+shopping:
+  # 导购链路检索参数（M5.6 配置化）
+  recall_limit: 12      # 语义召回候选数
+  recall_threshold: 0.3 # 召回相似度阈值
+  rank_top_k: 5         # 排序后保留的商品数
+  semantic_floor: 0.4   # 语义地板分：低于该分视为跑题候选
+
 llm:
   model_name: ${oc.env:LLM_MODEL_NAME,Pro/zai-org/GLM-5.1}
   api_key: ${oc.env:LLM_API_KEY}
