@@ -59,7 +59,7 @@ export function getUsername(): string {
   }
 }
 
-/** 组装需要携带的鉴权请求头：共享令牌（问数）+ JWT（会话） */
+/** 组装需要携带的鉴权请求头：共享令牌（API_TOKEN）+ JWT（用户登录） */
 export function authHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
   const apiToken = getApiToken();
