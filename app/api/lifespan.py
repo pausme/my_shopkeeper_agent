@@ -30,6 +30,14 @@ async def lifespan(app: FastAPI):
     meta_mysql_client_manager.init()
     dw_mysql_client_manager.init()
 
+    # 自动建表：用户/会话/消息三张业务表不存在时创建（已存在则跳过，不影响数据）
+    from app.models.base import Base
+    from app.models.conversation import ConversationMySQL, MessageMySQL  # noqa: F401
+    from app.models.user import UserMySQL  # noqa: F401
+
+    async with meta_mysql_client_manager.engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
     # yield 之前是启动逻辑，yield 之后是关闭逻辑；中间阶段由 FastAPI 正常处理请求
     yield
 

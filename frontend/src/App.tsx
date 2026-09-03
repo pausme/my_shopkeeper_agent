@@ -15,11 +15,18 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AuthDialog } from "./components/AuthDialog";
 import { Composer } from "./components/Composer";
 import { EmptyState } from "./components/EmptyState";
 import { MessageBubble } from "./components/MessageBubble";
 import { ApiError, streamQuery } from "./lib/agentApi";
 import { cn, summarizeResult } from "./lib/format";
+import {
+  deleteConversationRemote,
+  fetchConversations,
+  saveConversation,
+} from "./lib/authApi";
+import { getJwt, getUsername, setJwt } from "./lib/agentApiShared";
 import { getApiToken, loadConversations, saveConversations, setApiToken } from "./lib/storage";
 import type { AgentEvent, ChatMessage, Conversation, StepState } from "./types/agent";
 
@@ -98,6 +105,11 @@ export default function App() {
   const [streamStartedAt, setStreamStartedAt] = useState<number | null>(null);
   const [tokenPanelOpen, setTokenPanelOpen] = useState(false);
   const [tokenInput, setTokenInput] = useState("");
+  const [authOpen, setAuthOpen] = useState(false);
+  // 登录态：JWT 存在即为已登录；服务端会话同步仅在登录后启用
+  const [jwt, setJwtState] = useState(() => getJwt());
+  const [username, setUsernameState] = useState(() => getUsername());
+  const [syncError, setSyncError] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const active = conversations.find((item) => item.id === activeId) ?? conversations[0];
@@ -118,6 +130,37 @@ export default function App() {
   useEffect(() => {
     saveConversations(conversations);
   }, [conversations]);
+
+  // 登录后拉取服务端会话（远端数据优先；本地缓存仅在拉取失败时兜底保留）
+  useEffect(() => {
+    if (!jwt) return;
+    fetchConversations()
+      .then((remote) => {
+        if (remote.length > 0) {
+          setConversations(remote);
+          setActiveId(remote[0].id);
+        }
+        setSyncError("");
+      })
+      .catch((error) => {
+        setSyncError(error instanceof Error ? error.message : "会话同步失败");
+      });
+  }, [jwt]);
+
+  // 会话变化且已登录时防抖同步到服务端（1.5 秒静默期，避免流式期间高频请求）
+  const syncTimerRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!jwt) return;
+    window.clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = window.setTimeout(() => {
+      const conversation = conversations.find((item) => item.id === activeId);
+      if (!conversation || conversation.messages.length === 0) return;
+      saveConversation(conversation).catch(() => {
+        // 同步失败不打扰用户，本地已有缓存；下次变更会重试
+      });
+    }, 1500);
+    return () => window.clearTimeout(syncTimerRef.current);
+  }, [conversations, activeId, jwt]);
 
   // 顶部实时计时：流式期间每秒刷新
   const [now, setNow] = useState(() => Date.now());
@@ -274,6 +317,9 @@ export default function App() {
 
   const deleteConversation = (id: string) => {
     if (isStreaming && id === active.id) return;
+    if (jwt) {
+      deleteConversationRemote(id).catch(() => {});
+    }
     setConversations((current) => {
       const rest = current.filter((item) => item.id !== id);
       const next = rest.length > 0 ? rest : [createConversation()];
@@ -282,6 +328,19 @@ export default function App() {
       }
       return next;
     });
+  };
+
+  const handleAuthed = (token: string, name: string) => {
+    setJwt(token, name);
+    setJwtState(token);
+    setUsernameState(name);
+    setAuthOpen(false);
+  };
+
+  const handleLogout = () => {
+    setJwt("", "");
+    setJwtState("");
+    setUsernameState("");
   };
 
   const clearActiveConversation = () => {
@@ -299,6 +358,9 @@ export default function App() {
 
   return (
     <div className="h-dvh overflow-hidden bg-parchment text-ink">
+      {authOpen && (
+        <AuthDialog onClose={() => setAuthOpen(false)} onAuthed={handleAuthed} />
+      )}
       <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(90deg,rgba(32,32,29,0.045)_1px,transparent_1px),linear-gradient(rgba(32,32,29,0.035)_1px,transparent_1px)] bg-[size:48px_48px]" />
       <div className="pointer-events-none fixed inset-0 grain" />
 
@@ -405,6 +467,20 @@ export default function App() {
                 </span>
                 <span>{completedCount}</span>
               </div>
+              <button
+                type="button"
+                onClick={() => (jwt ? handleLogout() : setAuthOpen(true))}
+                className="flex items-center justify-between transition hover:text-ink"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
+                  {jwt ? "账号" : "登录"}
+                </span>
+                <span>{jwt ? `${username} · 退出` : "未登录"}</span>
+              </button>
+              {syncError && (
+                <div className="text-tomato/80">会话同步：{syncError}</div>
+              )}
               <button
                 type="button"
                 onClick={() => {

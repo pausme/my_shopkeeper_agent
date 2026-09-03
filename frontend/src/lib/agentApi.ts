@@ -1,12 +1,10 @@
 /**
  * 智能体接口客户端
  * 封装后端 /api/query SSE 流式接口请求与事件解析逻辑
- * 附带：多轮 history 上送、访问令牌注入、无事件看门狗超时
+ * 附带：多轮 history 上送、鉴权头注入（共享令牌 + JWT）、无事件看门狗超时
  */
 import type { AgentEvent, ChatMessage } from "../types/agent";
-import { getApiToken } from "./storage";
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ?? "";
+import { API_BASE_URL, authHeaders, getApiToken } from "./agentApiShared";
 
 // 后端单次查询可能需要分钟级等待，但长时间收不到任何事件视为链路异常
 const NO_EVENT_TIMEOUT_MS = 10 * 60 * 1000;
@@ -30,10 +28,10 @@ export async function streamQuery(query: string, options: QueryOptions) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "text/event-stream",
+    ...authHeaders(),
   };
-  const token = getApiToken();
-  if (token) {
-    headers["X-API-Token"] = token;
+  if (!getApiToken()) {
+    delete headers["X-API-Token"];
   }
 
   // 只上送最近 6 条已完结消息（约 3 轮），让后端能理解指代式追问
