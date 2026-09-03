@@ -5,7 +5,6 @@
 value 字段沿用 IK 中文分词，与字段取值索引保持一致的检索体验
 """
 
-from dataclasses import asdict
 
 from elasticsearch import AsyncElasticsearch
 
@@ -57,7 +56,16 @@ class ReviewESRepository:
                 operations.append(
                     {"index": {"_index": self.index_name, "_id": review["review_id"]}}
                 )
-                operations.append(asdict(_ReviewDoc(**review)))
+                operations.append(
+                    {
+                        "review_id": review["review_id"],
+                        "product_id": review["product_id"],
+                        "rating": review["rating"],
+                        "content": review["content"],
+                        "sentiment": review.get("sentiment"),
+                        "review_tags": review.get("review_tags") or [],
+                    }
+                )
             await self.client.bulk(operations=operations)
 
     async def search_negative(
@@ -93,23 +101,3 @@ class ReviewESRepository:
             bucket["key"]: bucket["doc_count"]
             for bucket in resp["aggregations"]["by_sentiment"]["buckets"]
         }
-
-
-class _ReviewDoc:
-    """ES 文档结构（评价的精简投影）"""
-
-    def __init__(
-        self,
-        review_id: str,
-        product_id: str,
-        rating: int,
-        content: str,
-        sentiment: str | None = None,
-        review_tags: list[str] | None = None,
-    ):
-        self.review_id = review_id
-        self.product_id = product_id
-        self.rating = rating
-        self.content = content
-        self.sentiment = sentiment
-        self.review_tags = review_tags or []

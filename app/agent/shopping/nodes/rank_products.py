@@ -13,8 +13,11 @@ from app.core.log import logger
 
 TOP_K = 5
 
-# 风险等级惩罚系数：高风险商品几乎必然跌出主推荐
-RISK_PENALTY = {"low": 0.0, "medium": 0.1, "high": 0.3, "unknown": 0.15}
+# 风险等级惩罚系数：高风险大幅降权但不一票否决（风险已在推荐理由中如实呈现）
+RISK_PENALTY = {"low": 0.0, "medium": 0.05, "high": 0.25, "unknown": 0.1}
+
+# 语义地板分：低于该分的候选与需求明显跑题；过滤后不足 3 款时回退全量
+SEMANTIC_FLOOR = 0.4
 
 
 async def rank_products(
@@ -35,6 +38,18 @@ async def rank_products(
         if not candidates:
             writer({"type": "progress", "step": step, "status": "success"})
             return {"ranked_products": []}
+
+        # 品类硬约束：槽位明确且同品类候选充足时，跨品类商品不参与排序
+        category = slots.get("category")
+        if category:
+            same_category = [c for c in candidates if c.get("category_name") == category]
+            if len(same_category) >= 3:
+                candidates = same_category
+
+        # 语义地板分：过滤明显跑题候选；过滤后不足 3 款则保留原候选
+        on_topic = [c for c in candidates if float(c.get("semantic_score", 0)) >= SEMANTIC_FLOOR]
+        if len(on_topic) >= 3:
+            candidates = on_topic
 
         max_sales = max((c.get("sales_30d") or 0) for c in candidates) or 1
         ranked = []

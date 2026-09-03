@@ -9,7 +9,7 @@
 {products_facts}
 
 【输出要求】
-1. 仅输出一个 JSON 对象：{"summary": "整体推荐结论（2~3 句）", "recommendations": [{"product_id": "...", "reason": "推荐理由（1~2 句）"}], "next_question": "一条引导用户继续收窄需求的追问（没有就填空字符串）"}
+1. 仅输出一个 JSON 对象：{{"summary": "整体推荐结论（2~3 句）", "recommendations": [{{"product_id": "...", "reason": "推荐理由（1~2 句）"}}], "next_question": "一条引导用户继续收窄需求的追问（没有就填空字符串）"}}
 2. recommendations 只包含给定商品，product_id 必须原样引用。
 3. reason 只能引用给定事实字段（价格、评分、销量、好评关键词、风险摘要、适合/不适合人群），禁止编造任何参数、评价或承诺。
 4. 风险提示要如实带出：如有集中差评反馈，必须在 reason 中提及。

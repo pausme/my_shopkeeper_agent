@@ -47,16 +47,23 @@ async def persist_and_emit(
     except Exception as e:  # noqa: BLE001
         logger.warning(f"会话落库失败（不影响推荐输出）：{e}")
 
-    # 推荐结果：按 PRD 附带商品完整信息，前端直接渲染卡片
+    # 推荐结果：只输出 LLM 给出理由的商品（无理由=模型判定不符合需求，不应硬推）
     ranked = state.get("ranked_products") or []
     reasons = {
         item.get("product_id"): item.get("reason", "")
         for item in recommendation.get("recommendations", [])
     }
     recommended = [
-        {**product, "reason": reasons.get(product["product_id"], "")}
+        {**product, "reason": reasons[product["product_id"]]}
         for product in ranked
+        if reasons.get(product["product_id"], "").strip()
     ]
+    # 兜底：模型一条理由都没给时（罕见），退回前 3 名避免空推荐
+    if not recommended:
+        recommended = [
+            {**product, "reason": recommendation.get("summary", "")[:80]}
+            for product in ranked[:3]
+        ]
     writer(
         {
             "type": "recommendation",

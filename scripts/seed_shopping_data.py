@@ -16,6 +16,7 @@ import sys
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
+from uuid import NAMESPACE_URL, uuid5
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
@@ -243,7 +244,8 @@ def build_risk_summaries(
         negative = [r for r in product_reviews if r.sentiment == "negative"]
         negative_tags = [t for r in negative for t in (r.review_tags_json or [])]
         ratio = len(negative) / len(product_reviews)
-        level = "low" if ratio < 0.12 else ("medium" if ratio < 0.2 else "high")
+        # 定级阈值对齐真实电商：15%~30% 差评率属常见区间，只有 >30% 才判高风险
+        level = "low" if ratio < 0.15 else ("medium" if ratio < 0.3 else "high")
 
         suitable, not_suitable = SUITABLE_HINTS[product.category_name]
         if negative_tags:
@@ -332,7 +334,12 @@ async def main():
         }
         for p in products
     ]
-    await product_qdrant.upsert([p.product_id for p in products], embeddings, payloads)
+    await product_qdrant.upsert(
+        # Qdrant 点 ID 只接受整数/UUID：用 uuid5 从 product_id 派生确定性 ID，重复构建幂等
+        [str(uuid5(NAMESPACE_URL, f"product:{p.product_id}")) for p in products],
+        embeddings,
+        payloads,
+    )
     print("Qdrant 商品向量重建完成")
 
     # 3. ES 评价索引重建

@@ -29,13 +29,13 @@ class ProductRepository:
         for model in (ProductInfoMySQL, ProductReviewMySQL, ProductRiskSummaryMySQL):
             await self.session.execute(delete(model))
 
-    async def save_products(self, products: list[ProductInfoMySQL]):
+    def save_products(self, products: list[ProductInfoMySQL]):
         self.session.add_all(products)
 
-    async def save_reviews(self, reviews: list[ProductReviewMySQL]):
+    def save_reviews(self, reviews: list[ProductReviewMySQL]):
         self.session.add_all(reviews)
 
-    async def save_risk_summaries(self, summaries: list[ProductRiskSummaryMySQL]):
+    def save_risk_summaries(self, summaries: list[ProductRiskSummaryMySQL]):
         self.session.add_all(summaries)
 
     # ---------- 读取（推荐链路使用） ----------
