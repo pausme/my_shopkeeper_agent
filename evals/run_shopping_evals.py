@@ -214,10 +214,13 @@ async def run_case(case: dict, host: str, token: str, timeout: float) -> tuple[b
                 if session_id:
                     payload["session_id"] = session_id
 
-                result.events = await asyncio.to_thread(
+                # 累积而非覆盖：续答前轮的 clarification 也必须留在记录里，
+                # 否则 expect=clarification 的用例会被误判"未追问"
+                round_events = await asyncio.to_thread(
                     stream_once, host, payload, token, timeout
                 )
-                events = result.events
+                result.events.extend(round_events)
+                events = round_events
 
                 # 从事件流提取多轮上下文：session、追问计数
                 for event in events:

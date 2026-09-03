@@ -19,10 +19,26 @@ async def rewrite_question(state: ShoppingAgentState, runtime):
     """把省略式追问改写为独立问题；独立问题与无历史场景直接透传"""
 
     query = state["query"]
-    history_text = format_history(state.get("history"))
+    history = state.get("history") or []
+    history_text = format_history(history)
 
     # 没有历史对话时无需改写，直接透传原问题
     if not history_text:
+        return {"rewritten_query": query}
+
+    # "跳过/不确定/不知道"类应答：确定性恢复最近的真实需求，
+    # 不走 LLM 改写（泛化漂移会伤召回精度，实测空气炸锅案例）
+    if query.strip() in ("跳过", "不确定", "不知道"):
+        for message in reversed(history):
+            if (
+                message.get("role") == "user"
+                and str(message.get("content", "")).strip()
+                and str(message.get("content", "")).strip()
+                not in ("跳过", "不确定", "不知道")
+            ):
+                recovered = str(message["content"]).strip()
+                logger.info(f"跳过应答，恢复最近需求：{recovered[:60]}")
+                return {"rewritten_query": recovered}
         return {"rewritten_query": query}
 
     step = "改写追问"
