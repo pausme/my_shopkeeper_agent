@@ -21,19 +21,39 @@ from pydantic import BaseModel, Field
 from starlette.responses import StreamingResponse
 
 from app.api.dependencies import get_shopping_service
+from app.repositories.mysql.meta.user_mysql_repository import UserMySQLRepository
+from app.services.auth_service import verify_token
 from app.services.shopping_agent_service import ShoppingAgentService
 
 shopping_router = APIRouter(prefix="/api/shopping")
 
 
-async def require_api_token(
+async def get_user_scope(
+    service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
+    authorization: Annotated[str | None, Header()] = None,
     x_api_token: Annotated[str | None, Header()] = None,
 ):
-    """共享令牌鉴权：服务器设置了 API_TOKEN 环境变量时强制校验请求头，未设置则放行（本地开发）"""
+    """请求身份解析（安全整改：见 docs/security-and-usability-findings.md #2/#3）
+
+    - 合法用户 JWT 优先：服务端解析出 user_id 并返回，绝不信任客户端自传的 X-User-Id
+    - 否则校验共享令牌（API_TOKEN 未设置时放行，本地开发）；
+      共享令牌访问无个人身份，返回 None——会话类接口对无身份请求不返回私有数据
+    - 服务器设置了 API_TOKEN 且两者都无效时 401
+    """
+
+    if authorization and authorization.lower().startswith("bearer "):
+        payload = verify_token(authorization.split(" ", 1)[1].strip())
+        if payload:
+            user = await UserMySQLRepository(service.session).get_by_username(
+                payload.get("username", "")
+            )
+            if user is not None:
+                return str(user.id)
 
     expected = os.getenv("API_TOKEN")
     if expected and x_api_token != expected:
         raise HTTPException(status_code=401, detail="Invalid API token")
+    return None
 
 
 class ShoppingQuerySchema(BaseModel):
@@ -70,12 +90,12 @@ class CompareSchema(BaseModel):
 
 
 @shopping_router.post(
-    "/query", dependencies=[Depends(require_api_token)]
+    "/query", dependencies=[Depends(get_user_scope)]
 )
 async def shopping_query(
     body: ShoppingQuerySchema,
     service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
-    x_user_id: Annotated[str | None, Header()] = None,
+    user_id: Annotated[str | None, Depends(get_user_scope)] = None,
 ):
     """发起导购问答：流式返回追问、召回、分析、推荐与对比"""
 
@@ -86,18 +106,18 @@ async def shopping_query(
             history=body.history,
             selected_product_ids=body.selected_product_ids,
             scene_tag=body.scene_tag,
-            user_id=x_user_id,
+            user_id=user_id,
             clarification_count=body.clarification_count,
         ),
         media_type="text/event-stream",
     )
 
 
-@shopping_router.post("/feedback", dependencies=[Depends(require_api_token)])
+@shopping_router.post("/feedback", dependencies=[Depends(get_user_scope)])
 async def shopping_feedback(
     body: FeedbackSchema,
     service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
-    x_user_id: Annotated[str | None, Header()] = None,
+    user_id: Annotated[str | None, Depends(get_user_scope)] = None,
 ):
     """记录用户对推荐结果的反馈"""
 
@@ -106,30 +126,36 @@ async def shopping_feedback(
         body.message_id,
         body.feedback_type,
         product_id=body.product_id,
-        user_id=x_user_id,
+        user_id=user_id,
         comment=body.comment,
     )
     await service.session.commit()
     return {"ok": True, "feedback_id": feedback_id}
 
 
-@shopping_router.get("/sessions", dependencies=[Depends(require_api_token)])
+@shopping_router.get("/sessions", dependencies=[Depends(get_user_scope)])
 async def shopping_sessions(
     service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
-    x_user_id: Annotated[str | None, Header()] = None,
+    user_id: Annotated[str | None, Depends(get_user_scope)] = None,
 ):
-    """获取用户的历史导购会话"""
+    """获取当前身份的历史导购会话；无身份（纯共享令牌）不返回任何私有会话"""
 
-    return await service.shopping_session_repository.list_sessions(x_user_id)
+    return await service.shopping_session_repository.list_sessions(user_id)
 
 
-@shopping_router.get("/sessions/{session_id}", dependencies=[Depends(require_api_token)])
+@shopping_router.get("/sessions/{session_id}", dependencies=[Depends(get_user_scope)])
 async def shopping_session_detail(
     session_id: str,
     service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
+    user_id: Annotated[str | None, Depends(get_user_scope)] = None,
 ):
-    """获取单个会话的消息历史"""
+    """获取单个会话的消息历史（属主校验：登录身份不匹配时视为不存在）"""
 
+    owner = await service.shopping_session_repository.get_session_owner(session_id)
+    if owner is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    if user_id is not None and owner != user_id:
+        raise HTTPException(status_code=404, detail="会话不存在")
     messages = await service.shopping_session_repository.get_session_messages(session_id)
     if not messages:
         raise HTTPException(status_code=404, detail="会话不存在")
@@ -146,11 +172,11 @@ class EventSchema(BaseModel):
     event_data: dict = {}
 
 
-@shopping_router.post("/events", dependencies=[Depends(require_api_token)])
+@shopping_router.post("/events", dependencies=[Depends(get_user_scope)])
 async def shopping_event(
     body: EventSchema,
     service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
-    x_user_id: Annotated[str | None, Header()] = None,
+    user_id: Annotated[str | None, Depends(get_user_scope)] = None,
 ):
     """记录前端行为埋点事件（商品点击等）"""
 
@@ -158,13 +184,13 @@ async def shopping_event(
     if body.product_id:
         event_data["product_id"] = body.product_id
     await service.shopping_session_repository.save_event(
-        body.session_id, body.message_id, x_user_id, body.event_type, event_data
+        body.session_id, body.message_id, user_id, body.event_type, event_data
     )
     await service.session.commit()
     return {"ok": True}
 
 
-@shopping_router.delete("/sessions/{session_id}", dependencies=[Depends(require_api_token)])
+@shopping_router.delete("/sessions/{session_id}", dependencies=[Depends(get_user_scope)])
 async def delete_shopping_session(
     session_id: str,
     service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
@@ -178,7 +204,7 @@ async def delete_shopping_session(
     return {"ok": True}
 
 
-@shopping_router.post("/compare", dependencies=[Depends(require_api_token)])
+@shopping_router.post("/compare", dependencies=[Depends(get_user_scope)])
 async def shopping_compare(
     body: CompareSchema,
     service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
@@ -192,7 +218,7 @@ async def shopping_compare(
 
 
 @shopping_router.get(
-    "/products/{product_id}/summary", dependencies=[Depends(require_api_token)]
+    "/products/{product_id}/summary", dependencies=[Depends(get_user_scope)]
 )
 async def shopping_product_summary(
     product_id: str,

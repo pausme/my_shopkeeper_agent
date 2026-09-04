@@ -57,11 +57,18 @@ class ShoppingSessionRepository:
         return existing
 
     async def list_sessions(self, user_id: str | None, limit: int = 50) -> list[dict]:
-        """按最近更新列出会话"""
+        """按最近更新列出会话
 
-        conditions = [ShoppingSessionMySQL.is_deleted == 0]
-        if user_id:
-            conditions.append(ShoppingSessionMySQL.user_id == user_id)
+        安全整改（findings #3）：无身份（user_id 为空，纯共享令牌访问）时不返回
+        任何私有会话，避免跨用户历史泄露
+        """
+
+        if not user_id:
+            return []
+        conditions = [
+            ShoppingSessionMySQL.is_deleted == 0,
+            ShoppingSessionMySQL.user_id == user_id,
+        ]
         result = await self.session.execute(
             select(ShoppingSessionMySQL)
             .where(*conditions)
@@ -79,6 +86,17 @@ class ShoppingSessionRepository:
             }
             for row in result.scalars()
         ]
+
+    async def get_session_owner(self, session_id: str) -> str | None:
+        """查询会话属主 user_id（不存在返回 None）"""
+
+        result = await self.session.execute(
+            select(ShoppingSessionMySQL.user_id).where(
+                ShoppingSessionMySQL.session_id == session_id,
+                ShoppingSessionMySQL.is_deleted == 0,
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def get_session_messages(self, session_id: str) -> list[dict]:
         """按时间列出会话消息"""
