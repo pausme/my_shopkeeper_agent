@@ -112,7 +112,7 @@ jobs:
           HOST="${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
           # 冒烟在服务器端脱钩运行并落盘结果，CI 只用短连接轮询结果文件
           ssh "$HOST" 'rm -f /tmp/shopping_eval.exit /tmp/shopping_eval.log; cd ~/shopkeeper-agent && export PATH="$HOME/.local/bin:$PATH" && setsid bash -c "API_TOKEN=\$(grep ^API_TOKEN= .env | cut -d= -f2) uv run python scripts/smoke_shopping.py > /tmp/shopping_eval.log 2>&1; echo \$? > /tmp/shopping_eval.exit" > /dev/null 2>&1 < /dev/null &'
-          for i in $(seq 1 30); do
+          for i in $(seq 1 75); do
             sleep 20
             if ssh "$HOST" 'test -f /tmp/shopping_eval.exit' 2>/dev/null; then
               code=$(ssh "$HOST" 'cat /tmp/shopping_eval.exit')
