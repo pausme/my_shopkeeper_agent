@@ -67,7 +67,8 @@ async def _ensure_session_access(
     )
     if not exists:
         raise HTTPException(status_code=404, detail="会话不存在")
-    if user_id is not None and owner is not None and owner != user_id:
+    # 登录身份访问时，会话必须归属该用户；匿名会话仅对共享令牌（无身份）开放
+    if user_id is not None and owner != user_id:
         raise HTTPException(status_code=403, detail="无权访问该会话")
 
 
@@ -147,7 +148,8 @@ async def shopping_query(
         )
         if not exists:
             raise HTTPException(status_code=404, detail="会话不存在")
-        if user_id is not None and owner is not None and owner != user_id:
+        # 登录身份访问时，会话必须归属该用户；匿名会话仅对共享令牌开放
+        if user_id is not None and owner != user_id:
             raise HTTPException(status_code=403, detail="无权访问该会话")
 
     return StreamingResponse(
@@ -218,8 +220,8 @@ async def shopping_session_detail(
     )
     if not exists:
         raise HTTPException(status_code=404, detail="会话不存在")
-    if user_id is not None and owner is not None and owner != user_id:
-        # 统一 404，不暴露他人会话存在性
+    # 登录身份访问时，会话必须归属该用户（统一 404 不暴露存在性）
+    if user_id is not None and owner != user_id:
         raise HTTPException(status_code=404, detail="会话不存在")
     messages = await service.shopping_session_repository.get_session_messages(session_id)
     if not messages:
