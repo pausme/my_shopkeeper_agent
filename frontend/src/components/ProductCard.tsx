@@ -170,14 +170,14 @@ export function ProductCard({
         )}
 
         {/* CTA 区（N4.7） */}
-        <div className="mt-3 flex items-center gap-2 border-t border-line pt-2.5">
+        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-line pt-2.5">
           <button
             type="button"
             onClick={() => {
               track("detail");
               onDetail?.(product.product_id);
             }}
-            className="inline-flex items-center gap-1 rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink/70 transition hover:border-primary/40 hover:text-primary"
+            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-line px-2 py-1 text-xs font-medium text-ink/70 transition hover:border-primary/40 hover:text-primary"
           >
             <BookOpenCheck className="h-3 w-3" aria-hidden="true" />
             查看详情
@@ -190,7 +190,7 @@ export function ProductCard({
             }}
             disabled={inCompare}
             className={cn(
-              "inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-45",
+              "inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-2 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-45",
               inCompare
                 ? "border-primary/40 bg-primary/10 text-primary"
                 : "border-line text-ink/70 hover:border-primary/40 hover:text-primary",
@@ -205,7 +205,7 @@ export function ProductCard({
               track("ask");
               onAsk?.(product.product_id, product.title);
             }}
-            className="inline-flex items-center gap-1 rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink/70 transition hover:border-primary/40 hover:text-primary"
+            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-line px-2 py-1 text-xs font-medium text-ink/70 transition hover:border-primary/40 hover:text-primary"
           >
             <MessageSquarePlus className="h-3 w-3" aria-hidden="true" />
             继续追问
@@ -258,7 +258,7 @@ function FeedbackInline({ onFeedback }: { onFeedback: (type: string) => void }) 
     <button
       type="button"
       onClick={() => setOpen(true)}
-      className="inline-flex items-center gap-1 text-xs text-ink/55 transition hover:text-ink"
+      className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-ink/55 transition hover:text-ink"
     >
       <BarChart2 className="h-3 w-3" aria-hidden="true" />
       反馈
