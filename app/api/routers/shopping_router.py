@@ -226,6 +226,39 @@ async def shopping_session_detail(
     messages = await service.shopping_session_repository.get_session_messages(session_id)
     if not messages:
         raise HTTPException(status_code=404, detail="会话不存在")
+
+    # 历史回放还原：推荐消息挂载商品卡（summary/理由来自落库的推荐结果）
+    for message in messages:
+        if message["message_type"] != "recommendation":
+            continue
+        rec = await service.shopping_session_repository.get_recommendation_by_message(
+            message["message_id"]
+        )
+        if not rec:
+            continue
+        reasons = {
+            item.get("product_id"): item.get("reason", "")
+            for item in rec.get("recommendations", [])
+        }
+        ids = [item.get("product_id") for item in rec.get("recommendations", [])]
+        rows = await service.product_repository.get_by_product_ids(ids)
+        message["summary"] = rec.get("summary") or message["content"]
+        message["products"] = [
+            {
+                "product_id": row.product_id,
+                "title": row.title,
+                "category_name": row.category_name,
+                "brand": row.brand,
+                "price": float(row.price),
+                "promotion_price": float(row.promotion_price) if row.promotion_price else None,
+                "rating": float(row.rating),
+                "sales_30d": row.sales_30d,
+                "review_count": row.review_count,
+                "attributes": row.attributes_json or {},
+                "reason": reasons.get(row.product_id, ""),
+            }
+            for row in rows
+        ]
     return {"session_id": session_id, "messages": messages}
 
 

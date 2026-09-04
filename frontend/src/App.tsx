@@ -336,13 +336,26 @@ export default function App() {
       setShoppingSessionId(sessionId);
       setShoppingClarificationCount(0);
       setShoppingMessages(
-        detail.messages.map((row) => ({
-          id: row.message_id,
-          role: row.role === "user" ? "user" : "assistant",
-          kind: row.message_type === "clarification" ? "clarification" : "text",
-          content: row.content,
-          createdAt: row.created_at ?? Date.now(),
-        })),
+        detail.messages.map((row) => {
+          const rowWithHydration = row as {
+            summary?: string;
+            products?: RecommendedProduct[];
+          };
+          return {
+            id: row.message_id,
+            role: row.role === "user" ? "user" : "assistant",
+            kind:
+              row.message_type === "clarification"
+                ? "clarification"
+                : row.message_type === "recommendation"
+                  ? "recommendation"
+                  : "text",
+            content: rowWithHydration.summary || row.content,
+            products: rowWithHydration.products,
+            messageId: row.message_id,
+            createdAt: row.created_at ?? Date.now(),
+          };
+        }),
       );
       setView("chat");
     } catch {
