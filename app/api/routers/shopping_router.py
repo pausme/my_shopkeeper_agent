@@ -309,8 +309,15 @@ async def shopping_event(
 async def delete_shopping_session(
     session_id: str,
     service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
+    user_id: Annotated[str | None, Depends(get_user_scope)] = None,
 ):
-    """删除导购会话（M9.3 隐私控制：用户可清除自己的咨询历史）"""
+    """删除导购会话（M9.3；R1：登录身份需匹配属主，非属主统一 404）"""
+
+    exists, owner = await service.shopping_session_repository.get_session_exists_and_owner(
+        session_id
+    )
+    if not exists or (user_id is not None and owner != user_id):
+        raise HTTPException(status_code=404, detail="会话不存在")
 
     deleted = await service.shopping_session_repository.delete_session(session_id)
     await service.session.commit()

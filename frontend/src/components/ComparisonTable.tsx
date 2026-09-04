@@ -50,6 +50,8 @@ export function ComparisonTable({ headers, rows, warning, conclusion }: Comparis
   )?.product_id;
 
   const shownDims = expanded ? dims : dims.slice(0, collapsed ? 5 : dims.length);
+  const productName = (row: Record<string, string>, index: number) =>
+    row["商品"] || `商品${index + 1}`;
 
   const cellClass = (dim: string, row: Record<string, string>) =>
     cn(
@@ -72,7 +74,7 @@ export function ComparisonTable({ headers, rows, warning, conclusion }: Comparis
             onClick={() =>
               downloadCsv(
                 "pickmate-对比",
-                ["维度", ...rows.map((row) => row["商品"] || row.product_id)],
+                ["维度", ...rows.map(productName)],
                 dims.map((dim) => [dim, ...rows.map((row) => row[dim] || "暂无数据")]),
               )
             }
@@ -100,12 +102,12 @@ export function ComparisonTable({ headers, rows, warning, conclusion }: Comparis
               <th className="sticky left-0 z-10 w-20 bg-subtle px-3 py-2.5 text-xs font-semibold text-ink/60">
                 维度
               </th>
-              {rows.map((row) => (
+              {rows.map((row, index) => (
                 <th
                   key={row.product_id}
                   className="min-w-[180px] bg-subtle px-3 py-2.5 text-xs font-semibold text-ink"
                 >
-                  <span className="line-clamp-2">{row["商品"]}</span>
+                  <span className="line-clamp-2">{productName(row, index)}</span>
                 </th>
               ))}
             </tr>

@@ -54,10 +54,15 @@ async def register(
     # findings #6：注册/登录限流（每 IP 每分钟 5 次）
     enforce_rate_limit(f"auth:{request.client.host if request.client else 'unknown'}", 5, 60)
 
+    # R3：用户名统一 strip，注册/登录共用同一套规范化，防尾随空格产生影子账号
+    username = body.username.strip()
+    if not username:
+        raise HTTPException(status_code=422, detail="用户名不能为空")
+
     repository = UserMySQLRepository(session)
-    if await repository.get_by_username(body.username):
+    if await repository.get_by_username(username):
         raise HTTPException(status_code=409, detail="用户名已被占用")
-    user = await repository.create(body.username, hash_password(body.password))
+    user = await repository.create(username, hash_password(body.password))
     await session.commit()
     return {"token": issue_token(user.id, user.username), "username": user.username}
 
@@ -72,8 +77,13 @@ async def login(
 
     enforce_rate_limit(f"auth:{request.client.host if request.client else 'unknown'}", 5, 60)
 
+    # R3：登录侧同样 strip，与注册规范化一致
+    username = body.username.strip()
+    if not username:
+        raise HTTPException(status_code=422, detail="用户名不能为空")
+
     repository = UserMySQLRepository(session)
-    user = await repository.get_by_username(body.username)
+    user = await repository.get_by_username(username)
     if user is None or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     return {"token": issue_token(user.id, user.username), "username": user.username}

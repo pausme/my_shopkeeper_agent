@@ -69,6 +69,7 @@ export default function App() {
   const [username, setUsernameState] = useState(() => getUsername());
   const [detailProduct, setDetailProduct] = useState<RecommendedProduct | null>(null);
   const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [sessionLoadError, setSessionLoadError] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLDivElement | null>(null);
 
@@ -78,12 +79,22 @@ export default function App() {
     () => [...shoppingMessages].reverse().find((m) => m.kind === "recommendation"),
     [shoppingMessages],
   );
+  const productTitleById = useMemo(() => {
+    const titles = new Map<string, string>();
+    for (const message of shoppingMessages) {
+      for (const product of message.products ?? []) {
+        titles.set(product.product_id, product.title);
+      }
+    }
+    return titles;
+  }, [shoppingMessages]);
 
   useEffect(() => {
+    setShoppingSessions([]);
     fetchShoppingSessions()
       .then(setShoppingSessions)
       .catch(() => setShoppingSessions([]));
-  }, []);
+  }, [jwt]);
 
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -117,6 +128,7 @@ export default function App() {
   ) => {
     const query = rawQuery.trim();
     if (!query || isStreaming) return;
+    setSessionLoadError("");
 
     const userMessage: ShoppingMessage = {
       id: makeId(),
@@ -311,9 +323,9 @@ export default function App() {
     );
   };
 
-  const handleAskAbout = (productId: string, title: string) => {
+  const handleAskAbout = (_productId: string, title: string) => {
     if (isStreaming) return;
-    void startShoppingQuery(`${title}（${productId}）值不值得买？帮我分析一下`);
+    void startShoppingQuery(`${title} 值不值得买？帮我分析一下`);
   };
 
   const submitCompare = () => {
@@ -359,7 +371,11 @@ export default function App() {
       );
       setView("chat");
     } catch {
-      // 加载失败静默处理
+      setShoppingSessions((current) =>
+        current.filter((session) => session.session_id !== sessionId),
+      );
+      setSessionLoadError("该会话不属于当前账号或已删除");
+      setView("home");
     }
   };
 
@@ -370,6 +386,8 @@ export default function App() {
     setShoppingClarificationCount(0);
     setCompareIds([]);
     setDraft("");
+    setLoadedSessionTitle("");
+    setSessionLoadError("");
     setView("home");
   };
 
@@ -379,6 +397,14 @@ export default function App() {
     setJwt(token, name);
     setJwtState(token);
     setUsernameState(name);
+    setShoppingMessages([]);
+    setShoppingSessionId("");
+    setShoppingClarificationCount(0);
+    setShoppingSessions([]);
+    setCompareIds([]);
+    setLoadedSessionTitle("");
+    setSessionLoadError("");
+    setView("home");
     setAuthOpen(false);
   };
 
@@ -386,6 +412,14 @@ export default function App() {
     setJwt("", "");
     setJwtState("");
     setUsernameState("");
+    setShoppingMessages([]);
+    setShoppingSessionId("");
+    setShoppingClarificationCount(0);
+    setShoppingSessions([]);
+    setCompareIds([]);
+    setLoadedSessionTitle("");
+    setSessionLoadError("");
+    setView("home");
   };
 
   const streamElapsed = streamStartedAt ? Math.round((now - streamStartedAt) / 1000) : 0;
@@ -533,6 +567,11 @@ export default function App() {
       {/* 主体 */}
       {view === "home" ? (
         <main className="min-h-0 flex-1 overflow-y-auto">
+          {sessionLoadError && (
+            <div className="mx-auto mt-4 max-w-3xl rounded-lg border border-risk/25 bg-risk/5 px-4 py-2 text-sm text-risk">
+              {sessionLoadError}
+            </div>
+          )}
           <ShoppingHome
             sessions={shoppingSessions}
             onSubmit={(query) => void startShoppingQuery(query)}
@@ -742,22 +781,25 @@ export default function App() {
             <div className="flex shrink-0 items-center gap-2 border-t border-line bg-white px-4 py-2 lg:px-8">
               <Scale className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
               <span className="text-xs text-ink/60">对比栏（{compareIds.length}/4）</span>
-              {compareIds.map((id) => (
-                <span
-                  key={id}
-                  className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary"
-                >
-                  {id}
-                  <button
-                    type="button"
-                    onClick={() => handleCompare(id)}
-                    aria-label={`移除 ${id}`}
-                    className="transition hover:text-risk"
+              {compareIds.map((id, index) => {
+                const productName = productTitleById.get(id) ?? `已选商品${index + 1}`;
+                return (
+                  <span
+                    key={id}
+                    className="inline-flex max-w-44 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary"
                   >
-                    <X className="h-2.5 w-2.5" aria-hidden="true" />
-                  </button>
-                </span>
-              ))}
+                    <span className="truncate">{productName}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleCompare(id)}
+                      aria-label={`移除 ${productName}`}
+                      className="shrink-0 transition hover:text-risk"
+                    >
+                      <X className="h-2.5 w-2.5" aria-hidden="true" />
+                    </button>
+                  </span>
+                );
+              })}
               <button
                 type="button"
                 onClick={submitCompare}

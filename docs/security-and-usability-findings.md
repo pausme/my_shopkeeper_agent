@@ -1,9 +1,91 @@
 # 普通用户测试漏洞登记
 
-> **整改状态（2026-09-04）**：#2/#3/#4/#5/#7 已修复上线并实测验证；
-> #6 已修复输入约束+限流（多实例部署需升级 Redis 限流）；
-> #8/#11/#14/#16 已修复；#9 由 pnpm-workspace.yaml 的 onlyBuiltDependencies 覆盖；
-> #1（HTTPS）/F1/F2 待运维侧操作（见 TODO F5）；#10/#12/#13/#15 及 N 组遗留为打磨项。
+## 复测记录（2026-09-04 15:37）
+
+本轮继续以普通用户视角做线上回归测试。结论是：登录态导购主链路、会话详情越权、反馈越权、输入长度限制、登录限流已经有明显修复；但仍发现两个需要优先处理的线上可复现安全问题。
+
+| 编号 | 问题 | 当前状态 | 复测结论 |
+| --- | --- | --- | --- |
+| R1 | 跨用户删除会话 | 未修复 | 用户 B 用自己的 JWT 删除用户 A 的测试会话，接口返回 200，用户 A 再查该会话返回 404 |
+| R2 | 跨用户写入埋点 | 未修复 | 用户 B 可向用户 A 的测试会话写入 `product_click` 埋点，接口返回 200 |
+| R3 | 只带 JWT 使用导购 | 已修复 | 临时测试用户只带 JWT 调用 `/api/shopping/query` 返回 200，并收到 SSE 追问事件 |
+| R4 | 跨用户读取会话详情 | 已修复 | 用户 B 读取用户 A 的测试会话详情返回 404 |
+| R5 | 跨用户提交反馈 | 已修复 | 用户 B 对用户 A 的测试会话提交反馈返回 403 |
+| R6 | 输入资源限制 | 已修复 | `query > 500`、`history > 6`、`selected_product_ids > 5` 均返回 422 |
+| R7 | 登录限流 | 已修复但需加固 | 连续错误登录第 6 次开始返回 429；当前实现为进程内限流，多实例/重启后会失效 |
+| R8 | 登录后不配置访问令牌也可导购 | 需产品确认 | 纯匿名无凭证访问仍 401；已登录 JWT 用户不带 `API_TOKEN` 可访问，这是后端当前策略 |
+| R9 | 切换用户后历史会话错乱且点击无反馈 | 已做前端修正，待部署复测 | 前端登录/退出后需清空并重拉历史；加载失败需给出提示 |
+| R10 | 商品后端 ID 暴露在用户可见文案 | 已做前端修正，待部署复测 | 继续追问、对比栏和 CSV 导出不应展示 `product_id`，仅保留内部接口传参 |
+
+### R1. 跨用户删除会话仍可成功
+- 严重级别：高
+- 现象：用户 A 创建导购测试会话后，用户 B 使用自己的 JWT 请求 `DELETE /api/shopping/sessions/{session_id}`，接口返回 `200 {"ok": true}`；随后用户 A 再请求该会话详情，返回 `404 会话不存在`。
+- 影响：任意登录用户只要拿到他人的 `session_id`，就可能删除他人的导购历史，造成隐私数据丢失和用户信任问题。
+- 证据：线上复测状态为 `OTHER_DELETE_STATUS 200`、`OWNER_AFTER_DELETE_STATUS 404`。源码中 `delete_shopping_session()` 只接收 `session_id` 和 `service`，没有注入 `user_id`；仓储 `delete_session()` 只按 `session_id` 删除。
+- 建议：删除接口与详情接口保持同一套属主校验：从 JWT 解析 `user_id`，先查 `session_id + user_id`，非属主统一返回 404；仓储层增加 `delete_session(session_id, user_id)` 或专门的 owner 校验方法。
+
+### R2. 跨用户埋点写入仍可成功
+- 严重级别：中
+- 现象：用户 B 使用自己的 JWT 向用户 A 的测试会话调用 `POST /api/shopping/events`，事件类型为 `product_click`，接口返回 `200 {"ok": true}`。
+- 影响：行为数据可被其他用户污染，后续如果用于推荐排序、运营看板、商品点击率统计或风控，会产生错误信号；也会留下跨用户行为混淆的审计风险。
+- 证据：线上复测状态为 `OTHER_EVENT_STATUS 200`。源码中 `shopping_event()` 只调用 `get_session_exists_and_owner()` 判断会话存在，没有比较 `owner` 和当前 `user_id`。
+- 建议：埋点接口复用 `_ensure_session_access()`；同时校验 `message_id` 属于该 `session_id`，`product_id` 属于该次推荐结果或商品主库。
+
+### R3. 认证用户名规范前后端不一致
+- 严重级别：低
+- 现象：前端提交登录/注册时会对用户名执行 `trim()`，但后端注册接口接受包含尾随空格的用户名。通过接口注册 `测试用户_空格 ` 成功，而用去掉空格的用户名登录返回 401。
+- 影响：用户复制粘贴或通过不同客户端注册时，可能创建肉眼难区分的账号；客服排查、账号找回和风控都会更麻烦。
+- 证据：线上接口注册带尾随空格用户名返回 200；同名去空格登录返回 401，带空格登录返回 200。
+- 建议：后端统一 `strip()` 并限制用户名字符集；注册和登录使用同一套规范化逻辑；错误提示避免暴露过多账号枚举信息。
+
+### R4. 线上接口文档公网可访问，需确认是否符合发布策略
+- 严重级别：低
+- 现象：`http://1.13.255.225/openapi.json` 和 `/docs` 当前可公网访问。
+- 影响：对联调友好，但也会暴露接口路径、请求头、字段限制和部分业务说明。若项目仍处于测试期问题不大；若面向真实 C 端用户公开，需要评估是否只在内网或登录后开放。
+- 证据：线上 `curl -I /openapi.json` 返回 `200 application/json`，`curl -I /docs` 返回 `200 text/html`。
+- 建议：明确环境策略。测试环境可开放，生产环境建议关闭或加基础认证/IP 白名单。
+
+### R5. 静态资源与响应安全头仍需加固
+- 严重级别：中
+- 现象：首页和静态资源响应缺少常见安全头，例如 `Content-Security-Policy`、`X-Content-Type-Options`、`Referrer-Policy`、`Permissions-Policy`、`X-Frame-Options`；同时缺少明确缓存策略。旧版 hashed JS 与新版 hashed JS 均可访问，说明发布后历史静态资源未清理或缓存策略未明确。
+- 影响：项目当前把 JWT/API Token 存在 `localStorage`，一旦前端出现 XSS，缺少 CSP 会扩大令牌泄露风险；缓存策略不清晰会导致用户拿到新旧资源混合版本，出现白屏或接口字段不匹配。
+- 证据：线上 `curl -I /`、`/assets/index-HU2iy_gP.js`、`/assets/index-B82biFXH.js` 均未返回上述安全头；新旧两个 hash 资源都返回 200。
+- 建议：Nginx 增加安全响应头；`index.html` 使用 `Cache-Control: no-cache`，hashed assets 使用长缓存；发布时清理过期 dist 资源或采用版本化目录。
+
+### R6. SPA fallback 对缺失静态资源返回 200 HTML
+- 严重级别：低
+- 现象：访问不存在的 `/favicon.ico`、`/robots.txt`、`/assets/*.map` 返回 `200 text/html`，内容为前端首页。
+- 影响：搜索引擎、浏览器图标、监控探针和静态资源错误排查会被误导；资源缺失时不容易从状态码发现问题。
+- 证据：线上 `curl /favicon.ico`、`/robots.txt`、`/assets/index-*.js.map` 均返回首页 HTML。
+- 建议：为 `/assets/` 配置 `try_files $uri =404`；补齐 `favicon.ico` 和 `robots.txt`；SPA fallback 只兜底业务前端路由。
+
+### R7. “访问令牌”与 JWT 登录策略口径不一致
+- 严重级别：中
+- 现象：用户登录后即使不配置右上角“访问令牌”也可以调用导购接口；但完全匿名、既无 JWT 也无 `API_TOKEN` 的请求仍返回 401。
+- 影响：如果产品预期是“普通 C 端用户登录后即可使用”，这是合理行为，但前端继续展示“访问令牌”会让用户误以为必须填写；如果产品预期是“双凭证都必须具备”，则后端当前策略存在鉴权放宽。
+- 证据：线上匿名请求 `/api/shopping/query` 返回 `401 Invalid API token`；临时登录用户只带 JWT 调用 `/api/shopping/query` 返回 200 并收到 SSE 追问事件。源码 `get_user_scope()` 中合法 JWT 优先返回 `user_id`，否则才检查共享 `API_TOKEN`。
+- 建议：二选一明确产品策略。C 端建议去掉普通用户可见的“访问令牌”，只保留登录态；运维/服务间 API Token 放到后台配置或环境变量，不暴露给普通用户。
+
+### R8. 切换用户后历史会话状态未刷新，导致历史数据错乱且点击无反馈
+- 严重级别：高
+- 现象：前端历史会话只在页面首次加载时请求一次；用户登录、退出或切换账号后，`shoppingSessions`、`shoppingMessages`、`shoppingSessionId` 没有被清空或按新身份重拉。用户会看到上一个账号的历史咨询，点击后如果后端归属校验失败，前端 `catch` 静默吞掉错误，表现为无法进入或没有任何提示。
+- 影响：普通用户会误以为历史数据串号；在共享浏览器或演示环境下尤其明显。虽然后端详情接口已阻止跨用户读取，但前端仍暴露了旧会话标题/最近问题，存在隐私感知和信任问题。
+- 证据：`frontend/src/App.tsx` 仅在组件首次挂载时调用 `fetchShoppingSessions()`；`handleAuthed()` 只写入 JWT 和用户名，不刷新历史；`handleLogout()` 只清除 JWT 状态，不清空历史和当前会话；`loadShoppingSession()` 的异常处理为空。
+- 修正：前端已将历史列表加载绑定到当前 `jwt`，登录和退出时会清空旧会话、当前消息、会话 ID、对比栏和错误提示；历史详情加载失败时会提示“该会话不属于当前账号或已删除”，并移除本地残留会话。
+- 建议：把历史会话绑定到当前 `jwt/username` 状态：登录成功后清空旧会话并重新拉取新用户历史；退出时清空 `shoppingSessions/shoppingMessages/shoppingSessionId/loadedSessionTitle/compareIds`；切换用户时回到首页；历史详情加载失败时展示“该会话不属于当前账号或已删除”，并从本地列表移除。
+
+### R10. 商品后端 ID 不应出现在普通用户可见文案中
+- 严重级别：中
+- 现象：商品卡点击“继续追问”时，前端曾把问题拼成“商品名称（后端 product_id）值不值得买”；对比栏也直接展示已选商品的 `product_id`。
+- 影响：普通用户不理解内部 ID，页面会显得像调试系统；同时内部主键/业务 ID 暴露到对话内容、截图或导出文件里，后续容易被拿去构造接口请求。
+- 证据：`frontend/src/App.tsx` 原 `handleAskAbout()` 使用 `${title}（${productId}）值不值得买？`；对比栏原来直接渲染 `{id}`。
+- 修正：前端已调整为继续追问只使用商品名称；对比栏显示商品名称，找不到名称时显示“已选商品1/2”；CSV 导出表头不再回退到 `product_id`。
+- 建议：后端仍可用 `product_id` 做内部接口参数，但接口响应给前端时应区分 `product_id` 和 `display_name`；普通用户可见区域、导出文件、埋点调试入口都不要展示后端 ID。
+
+> **整改状态（2026-09-04 复测后）**：#2/#3/#5 基本修复；#4 中“详情读取越权”已修复，但“删除越权”仍未修复（见 R1）；
+> #6 已修复输入约束+登录限流，仍需升级 Redis 等集中式限流；#7 中“反馈越权”已修复，但“埋点越权”仍未修复（见 R2）；
+> #8/#11/#14 基本修复；#16 状态已变化为公网可访问，需按发布策略确认；#1（HTTPS）仍待运维侧处理；
+> #9 复测仍失败；#10/#12/#13/#15 及 R3/R5/R6/R7/R8/R9/R10 为工程和体验打磨项。
 
 ## 测试方式
 - 以普通用户视角检查首页、导购输入、推荐结果、对比、反馈、历史会话和构建/启动链路
@@ -22,20 +104,21 @@
 
 ### 2. 普通用户注册/登录后仍无法使用核心导购功能
 - 严重级别：高
-- 现象：线上注册接口可正常返回 JWT，但只携带 `Authorization: Bearer <JWT>` 调用 `/api/shopping/query` 和 `/api/shopping/sessions` 仍返回 `401 Invalid API token`。
-- 影响：普通用户会认为“登录成功但产品不可用”，首屏热门问题和导购输入框都无法完成第一次体验；这会直接阻断 C 端 MVP 验证。
-- 证据：线上临时测试账号注册成功；随后用登录 JWT 请求导购问答和历史会话接口，均返回 `401 Unauthorized`。源码中导购路由只依赖 `require_api_token` 校验 `X-API-Token`，没有使用 `verify_token` 从 JWT 解析用户身份。
-- 建议：明确鉴权策略。C 端接口应以用户 JWT/Session 为准，共享 `API_TOKEN` 只用于服务间调用或运维保护；前端遇到 401 时应区分“未登录/令牌错误/服务不可用”。
+- 当前状态：已修复。
+- 原现象：线上注册接口可正常返回 JWT，但只携带 `Authorization: Bearer <JWT>` 调用 `/api/shopping/query` 和 `/api/shopping/sessions` 曾返回 `401 Invalid API token`。
+- 复测结论：2026-09-04 15:37 复测只携带 JWT 调用 `/api/shopping/sessions` 返回 200；调用 `/api/shopping/query` 返回 200 并收到 SSE 追问事件。
+- 后续建议：共享 `API_TOKEN` 仍建议只用于服务间调用或运维保护，C 端继续以 JWT/Session 为主。
 
 ### 3. 共享 API Token 与用户会话隔离不匹配，存在历史会话泄露风险
 - 严重级别：高
-- 现象：导购会话列表接口按 `X-User-Id` 过滤，但前端 `authHeaders()` 只发送 `X-API-Token` 和 `Authorization`，不会发送 `X-User-Id`。后端在 `user_id` 为空时不追加用户过滤条件。
-- 影响：一旦用户配置了共享 `API_TOKEN`，`GET /api/shopping/sessions` 可能返回所有未删除历史会话；普通用户之间的咨询历史、预算、送礼对象、母婴等偏隐私需求会互相可见。
-- 证据：`frontend/src/lib/agentApiShared.ts` 未设置 `X-User-Id`；`app/api/routers/shopping_router.py` 将可选请求头 `x_user_id` 传给 `list_sessions`；`app/repositories/mysql/meta/shopping_repositories.py` 只有 `user_id` 非空才按用户过滤。
-- 建议：后端从 JWT 中解析 `user_id`，禁止信任客户端自传 `X-User-Id`；会话列表默认必须带用户条件；无用户身份时不要返回任何私人会话。
+- 当前状态：已修复。
+- 原现象：导购会话列表接口曾依赖客户端传入的 `X-User-Id`，且 `user_id` 为空时可能返回全部未删除会话。
+- 复测结论：源码已改为从 JWT 解析 `user_id`，仓储层 `list_sessions()` 在无身份时直接返回空列表；临时用户只带 JWT 查询会话列表返回 200 且为空列表。
+- 后续建议：继续禁止前端自传用户 ID；共享令牌模式下不要返回任何私人会话。
 
 ### 4. 会话详情和删除接口未做用户归属校验，存在 IDOR 越权风险
 - 严重级别：高
+- 当前状态：部分修复。详情接口跨用户访问已返回 404；删除接口仍可跨用户删除，见 R1。
 - 现象：`GET /api/shopping/sessions/{session_id}` 和 `DELETE /api/shopping/sessions/{session_id}` 只按 `session_id` 查询/删除，没有校验当前登录用户是否拥有该会话。
 - 影响：持有有效共享令牌的用户如果获得或猜到他人的 `session_id`，可能读取他人完整咨询消息，甚至删除他人会话。由于会话 ID 会在 SSE 和历史列表中出现，泄露面不只来自暴力猜测。
 - 证据：`shopping_session_detail()` 调用 `get_session_messages(session_id)`；`delete_shopping_session()` 调用 `delete_session(session_id)`；仓储查询条件均未包含 `user_id`。
@@ -43,20 +126,22 @@
 
 ### 5. 导购查询允许客户端指定任意 `session_id`，可能串改他人会话上下文
 - 严重级别：高
-- 现象：`POST /api/shopping/query` 接收前端传入的 `session_id`，`ensure_session()` 在会话已存在时直接刷新 `last_query`，没有检查创建者或归属。
-- 影响：持有有效共享令牌的用户可以向他人会话追加咨询内容，污染历史、推荐结果和埋点；这会破坏个性化推荐和用户隐私。
-- 证据：`ShoppingQuerySchema.session_id` 可选但无归属校验；`ShoppingAgentService.query()` 使用传入的 `session_id`；`ensure_session()` 仅按 `session_id` 查询，命中后直接更新。
-- 建议：服务端创建并绑定会话；继续会话时必须校验会话归属；不允许客户端把任意 ID 绑定到当前请求。
+- 当前状态：基本修复。
+- 原现象：`POST /api/shopping/query` 接收前端传入的 `session_id`，但曾未检查创建者或归属。
+- 复测结论：当前 `shopping_query()` 已在继续已有会话前查询 owner，登录用户访问非本人会话返回 403；本轮未发现可通过 JWT 串改他人会话上下文。
+- 后续建议：补充单元/接口测试覆盖“用户 B 携带用户 A 的 session_id 继续追问应失败”。
 
 ### 6. 查询、历史和行为埋点缺少资源型输入限制与限流
 - 严重级别：中
-- 现象：`ShoppingQuerySchema.query` 没有长度限制；`history` 是无结构的 `list[dict]` 且无条数/字段长度限制；`selected_product_ids` 无长度限制；`event_data` 是无边界 `dict`。登录和导购接口未见限流、配额、验证码或重试退避。
-- 影响：恶意或异常客户端可提交超长 query、超大 history 或高频请求，造成 LLM/Embedding 成本上升、后端内存压力、SSE 连接占用和日志膨胀。
-- 证据：`app/api/routers/shopping_router.py` 的 Pydantic Schema 对 query/history/selected_product_ids/event_data 缺少 max/min 约束；连续多次错误登录均返回 401，未出现锁定或限速提示；源码未检索到限流逻辑。
-- 建议：增加 query 长度、history 条数、单条 content 长度、selected_product_ids 数量、event_data 大小限制；按用户/IP/API Token 做登录和导购限流；LLM 调用增加单用户日配额与并发控制。
+- 当前状态：部分修复。导购 query/history/selected_product_ids 已有长度或数量限制；登录已有进程内限流；多实例和服务重启场景仍需集中式限流。
+- 现象：导购请求已具备基础长度/数量限制，登录接口已具备每 IP 每分钟 5 次的进程内限流；但限流状态保存在单进程内存中，服务重启或多实例部署会失效。
+- 影响：单实例下已能拦截部分滥用；多实例、滚动发布或服务重启后仍可能被绕过，LLM/Embedding 成本和 SSE 连接占用仍需更强控制。
+- 证据：线上 `query > 500`、`history > 6`、`selected_product_ids > 5` 均返回 422；连续错误登录第 6 次起返回 429；`app/core/rate_limit.py` 使用模块级 `_buckets`。
+- 建议：升级 Redis/网关限流；增加导购接口单用户并发数、日配额、IP 风控和异常请求告警。
 
 ### 7. 反馈与埋点接口未校验 session/message/product 关系
 - 严重级别：中
+- 当前状态：部分修复。反馈接口已校验会话归属，跨用户反馈返回 403；埋点接口仍只校验会话存在，跨用户写入返回 200，见 R2。
 - 现象：`/api/shopping/feedback` 和 `/api/shopping/events` 直接保存客户端传入的 `session_id`、`message_id`、`product_id`，未校验是否属于当前用户、当前会话和实际推荐结果。
 - 影响：反馈数据可被伪造或污染，后续推荐优化、商品质量回流和埋点分析会失真；如果未来接入运营看板，可能导致错误决策。
 - 证据：`shopping_feedback()` 直接调用 `save_feedback()`；`shopping_event()` 直接调用 `save_event()`；仓储层只新增记录，不查验关联数据。
@@ -64,13 +149,14 @@
 
 ### 8. 前端对 401 的错误提示不准确
 - 严重级别：中
-- 现象：未配置 `API_TOKEN` 或只登录 JWT 后点击热门问题，页面显示“无法连接导购接口。导购接口请求失败：HTTP 401”，没有提示用户需要访问令牌或当前账号无法使用导购。
-- 影响：普通用户会把鉴权问题理解成系统故障，不知道下一步该登录、配置令牌还是联系管理员。
-- 证据：线上点击热门问题返回 401；`frontend/src/lib/shoppingApi.ts` 对 SSE 非 2xx 统一抛出 `导购接口请求失败：HTTP ${status}`；`frontend/src/App.tsx` 统一展示“无法连接导购接口”。
-- 建议：前端按状态码拆分错误。401 显示“当前账号暂无导购权限/访问令牌无效”，403 显示“无权限”，5xx 才提示服务异常；首页在不可用状态下显式展示登录/授权入口。
+- 当前状态：基本修复。
+- 原现象：未配置 `API_TOKEN` 或只登录 JWT 后点击热门问题，页面曾显示“无法连接导购接口。导购接口请求失败：HTTP 401”。
+- 复测结论：新版前端 JS 已将 401 错误文案改为“导购权限未通过：请在右上角「设置」里配置访问令牌，或登录后重试。”，并会自动打开设置面板；但外层主文案仍保留“无法连接导购接口”，还可以继续优化成“权限未通过”。
+- 建议：把错误标题也按状态码拆分，避免“权限问题”被理解成“网络连接问题”。
 
 ### 9. 前端在非交互环境下构建失败
 - 严重级别：高
+- 当前状态：未修复，2026-09-04 15:31 复测仍失败。
 - 现象：`pnpm build` / `CI=true pnpm build` 会触发 pnpm 对 `node_modules` 的清理或构建脚本审批，当前环境会直接失败
 - 影响：普通用户虽然不直接感知，但开发/部署流水线会卡住，前端改版无法稳定交付
 - 证据：`frontend/package.json`、构建命令输出中的 `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 和 `ERR_PNPM_IGNORED_BUILDS`
@@ -118,28 +204,32 @@
 - 证据：`scripts/smoke_shopping.py`、`evals/run_shopping_evals.py`
 - 建议：增加本地可离线运行的 mock/snapshot 测试模式
 
-### 16. 线上接口文档不可直接用于排障
+### 16. 线上接口文档暴露策略需要确认
 - 严重级别：低
-- 现象：访问 `http://1.13.255.225/openapi.json` 返回的是前端 HTML，而不是 FastAPI OpenAPI JSON。
-- 影响：对普通用户无直接影响，但测试、联调和排查接口字段时缺少线上契约入口，容易依赖过期文档。
-- 证据：线上 `curl http://1.13.255.225/openapi.json` 返回 Vite HTML 模板。
-- 建议：如果出于安全考虑关闭接口文档，应在内部环境提供受控 OpenAPI；如果不是刻意关闭，需要修正 Nginx `/openapi.json`、`/docs` 反代规则。
+- 当前状态：已从“不可排障”变化为“公网可访问”。
+- 现象：`http://1.13.255.225/openapi.json` 和 `/docs` 当前返回后端接口文档。
+- 影响：对测试联调有帮助，但生产环境会暴露接口路径、鉴权头、字段限制和接口说明，需要确认是否符合上线策略。
+- 证据：线上 `curl -I /openapi.json` 返回 `200 application/json`，`curl -I /docs` 返回 `200 text/html`。
+- 建议：测试环境保留；生产环境关闭或加基础认证/IP 白名单。
 
 ## 已验证项
 - `uv run ruff check .` 通过
 - `uv run pytest -q` 通过（3 passed）
+- `pnpm build` 失败，报错 `ERR_PNPM_IGNORED_BUILDS: Ignored build scripts: esbuild@0.25.12`
 - 线上首页可正常加载，标题为 `PickMate AI · 电商商品决策助手`
-- 未携带 `API_TOKEN` 请求 `/api/shopping/query` 和 `/api/shopping/sessions` 均返回 `401 Invalid API token`
-- 注册接口可返回 JWT；只携带 JWT 请求导购接口仍返回 `401 Invalid API token`
+- 未登录且未携带 `API_TOKEN` 请求 `/api/shopping/query` 返回 `401 Invalid API token`
 - 注册入参过短时可返回 422 基础校验错误
-- 连续 5 次错误登录均返回 401，未观察到限流/锁定提示
+- 2026-09-04 15:37 复测：只携带 JWT 请求 `/api/shopping/sessions` 返回 200，调用 `/api/shopping/query` 返回 200 并收到 SSE 追问事件
+- 2026-09-04 15:37 复测：跨用户详情返回 404，跨用户反馈返回 403，跨用户埋点返回 200，跨用户删除返回 200 且原用户再查为 404
+- 2026-09-04 15:37 复测：`query > 500`、`history > 6`、`selected_product_ids > 5` 均返回 422
+- 2026-09-04 15:37 复测：连续错误登录第 6 次起返回 429
 
 ## 测试结论
-当前系统首屏可访问，但作为 C 端普通用户还没有形成完整闭环：注册/登录成功后仍无法使用导购，核心接口依赖共享 `API_TOKEN`，且会话归属校验没有闭合。
+当前系统首屏可访问，注册/登录后导购主链路已基本闭环；但会话删除和埋点仍存在跨用户越权，HTTPS 和生产响应头也还没有补齐。
 
 上线前建议优先修复：
 1. HTTPS 与鉴权闭环；
-2. 从 JWT 解析用户身份并统一会话归属校验；
-3. 会话列表、详情、删除、继续追问、反馈、埋点的越权风险；
-4. 导购与登录接口限流、输入长度和资源消耗控制；
-5. 前端 401 状态提示和访问令牌入口的产品化处理。
+2. 修复删除接口和埋点接口的会话归属校验；
+3. 将进程内限流升级为集中式限流，并补充导购并发/日配额；
+4. 补齐安全响应头、静态资源缓存策略和缺失资源 404；
+5. 继续打磨历史会话、推荐对比和反馈入口体验。
