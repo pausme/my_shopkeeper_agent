@@ -50,7 +50,21 @@ export async function streamShoppingQuery(
     signal: options.signal,
   });
   if (!response.ok || !response.body) {
-    throw new Error(`导购接口请求失败：HTTP ${response.status}`);
+    // findings #8：按状态码拆分错误，401 给出可行动的指引
+    if (response.status === 401) {
+      throw Object.assign(
+        new Error("导购权限未通过：请在右上角「设置」里配置访问令牌，或登录后重试。"),
+        { status: 401 },
+      );
+    }
+    if (response.status === 429) {
+      throw Object.assign(new Error("请求太频繁了，请休息一分钟再试。"), { status: 429 });
+    }
+    throw new Error(
+      response.status >= 500
+        ? "导购服务暂时不可用，请稍后重试。"
+        : `导购接口请求失败：HTTP ${response.status}`,
+    );
   }
 
   const reader = response.body.getReader();

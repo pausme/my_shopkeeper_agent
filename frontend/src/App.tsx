@@ -139,7 +139,20 @@ export default function App() {
     setStreamStartedAt(Date.now());
     setDraft("");
     setView("chat");
-    setShoppingMessages((current) => [...current, userMessage, placeholder]);
+    // findings #11：跳过类应答给出"沿用上一轮需求"的显式反馈
+    const isSkip = ["跳过", "不确定", "不知道"].includes(query);
+    const prepend: ShoppingMessage[] = isSkip
+      ? [
+          {
+            id: makeId(),
+            role: "assistant",
+            kind: "notice",
+            content: "已跳过追问，沿用上一轮需求继续推荐。",
+            createdAt: Date.now(),
+          },
+        ]
+      : [];
+    setShoppingMessages((current) => [...current, ...prepend, userMessage, placeholder]);
 
     const history = shoppingMessages
       .filter((m) => m.kind === "text" || m.kind === "clarification" || m.kind === "recommendation")
@@ -234,6 +247,11 @@ export default function App() {
       );
     } catch (error) {
       const isAbort = error instanceof DOMException && error.name === "AbortError";
+      // findings #8：401 自动打开设置面板，引导配置令牌或登录
+      const errorStatus = (error as { status?: number }).status;
+      if (errorStatus === 401) {
+        setSettingsOpen(true);
+      }
       patchLastShoppingAssistant((message) =>
         message.kind === "progress"
           ? {
@@ -305,10 +323,16 @@ export default function App() {
     });
   };
 
+  const [loadedSessionTitle, setLoadedSessionTitle] = useState("");
   const loadShoppingSession = async (sessionId: string) => {
     if (isStreaming) return;
     try {
       const detail = await fetchShoppingSessionDetail(sessionId);
+      setLoadedSessionTitle(
+        shoppingSessions.find((s) => s.session_id === sessionId)?.title ||
+          shoppingSessions.find((s) => s.session_id === sessionId)?.last_query ||
+          "历史会话",
+      );
       setShoppingSessionId(sessionId);
       setShoppingClarificationCount(0);
       setShoppingMessages(
@@ -588,6 +612,10 @@ export default function App() {
                                     <SkeletonCards />
                                   </div>
                                 </div>
+                              )}
+
+                              {message.kind === "notice" && (
+                                <p className="text-xs leading-5 text-ink/50">{message.content}</p>
                               )}
 
                               {message.kind === "error" && (

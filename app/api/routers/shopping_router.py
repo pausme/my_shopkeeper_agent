@@ -16,11 +16,12 @@ AI 商品决策助手（导购）路由
 import os
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from pydantic import BaseModel, Field, field_validator
 from starlette.responses import StreamingResponse
 
 from app.api.dependencies import get_shopping_service
+from app.core.rate_limit import client_key, enforce_rate_limit
 from app.repositories.mysql.meta.user_mysql_repository import UserMySQLRepository
 from app.services.auth_service import verify_token
 from app.services.shopping_agent_service import ShoppingAgentService
@@ -56,19 +57,52 @@ async def get_user_scope(
     return None
 
 
+async def _ensure_session_access(
+    service: ShoppingAgentService, session_id: str, user_id: str | None
+) -> None:
+    """会话访问校验（findings #4/#7）：会话必须存在，登录身份需匹配属主"""
+
+    owner = await service.shopping_session_repository.get_session_owner(session_id)
+    if owner is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    if user_id is not None and owner != user_id:
+        raise HTTPException(status_code=403, detail="无权访问该会话")
+
+
+class HistoryItem(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=1000)
+
+
 class ShoppingQuerySchema(BaseModel):
-    query: str
-    session_id: str | None = None
-    history: list[dict] = []
-    selected_product_ids: list[str] = []
-    scene_tag: str | None = None
+    # findings #6：资源型输入限制
+    query: str = Field(min_length=1, max_length=500)
+    session_id: str | None = Field(default=None, max_length=64)
+    history: list[HistoryItem] = Field(default_factory=list, max_length=6)
+    selected_product_ids: list[str] = Field(default_factory=list, max_length=5)
+    scene_tag: str | None = Field(default=None, max_length=64)
     # 本会话已经历的追问轮数：前端在用户回答追问后随下一轮请求带回
-    clarification_count: int = 0
+    clarification_count: int = Field(default=0, ge=0, le=5)
+
+    @field_validator("selected_product_ids")
+    @classmethod
+    def validate_product_ids(cls, value: list[str]) -> list[str]:
+        cleaned = []
+        for item in value:
+            item = item.strip().upper()
+            if not item or len(item) > 64 or item in cleaned:
+                continue
+            cleaned.append(item)
+        return cleaned
+
+
+def _history_dicts(history: list[HistoryItem]) -> list[dict]:
+    return [{"role": item.role, "content": item.content} for item in history]
 
 
 class FeedbackSchema(BaseModel):
-    session_id: str
-    message_id: str | None = None
+    session_id: str = Field(max_length=64)
+    message_id: str | None = Field(default=None, max_length=64)
     feedback_type: Literal[
         # PRD 9.4 反馈六项
         "helpful",
@@ -79,8 +113,8 @@ class FeedbackSchema(BaseModel):
         "not_understand",
         "out_of_stock",
     ]
-    product_id: str | None = None
-    comment: str | None = None
+    product_id: str | None = Field(default=None, max_length=64)
+    comment: str | None = Field(default=None, max_length=500)
 
 
 class CompareSchema(BaseModel):
@@ -94,16 +128,27 @@ class CompareSchema(BaseModel):
 )
 async def shopping_query(
     body: ShoppingQuerySchema,
+    request: Request,
     service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
     user_id: Annotated[str | None, Depends(get_user_scope)] = None,
 ):
     """发起导购问答：流式返回追问、召回、分析、推荐与对比"""
 
+    # findings #6：按身份（或 IP）限流
+    enforce_rate_limit(f"query:{client_key(request.client.host if request.client else None, user_id)}", 10, 60)
+    # findings #5：会话归属校验——已有会话只能由属主（或创建时的同等匿名身份）继续
+    if body.session_id:
+        owner = await service.shopping_session_repository.get_session_owner(body.session_id)
+        if owner is None:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        if owner and user_id and owner != user_id:
+            raise HTTPException(status_code=403, detail="无权访问该会话")
+
     return StreamingResponse(
         service.query(
             body.query,
             session_id=body.session_id,
-            history=body.history,
+            history=_history_dicts(body.history),
             selected_product_ids=body.selected_product_ids,
             scene_tag=body.scene_tag,
             user_id=user_id,
@@ -116,11 +161,22 @@ async def shopping_query(
 @shopping_router.post("/feedback", dependencies=[Depends(get_user_scope)])
 async def shopping_feedback(
     body: FeedbackSchema,
+    request: Request,
     service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
     user_id: Annotated[str | None, Depends(get_user_scope)] = None,
 ):
     """记录用户对推荐结果的反馈"""
 
+    # findings #7：会话必须存在；登录身份需匹配属主；message 必须属于该会话
+    await _ensure_session_access(service, body.session_id, user_id)
+    if body.message_id:
+        message_session = await service.shopping_session_repository.get_message_session(
+            body.message_id
+        )
+        if message_session is None or message_session != body.session_id:
+            raise HTTPException(status_code=404, detail="消息不存在")
+
+    enforce_rate_limit(f"feedback:{client_key(request.client.host if request.client else None, user_id)}", 20, 60)
     feedback_id = await service.shopping_session_repository.save_feedback(
         body.session_id,
         body.message_id,
@@ -165,11 +221,19 @@ async def shopping_session_detail(
 class EventSchema(BaseModel):
     """前端行为埋点（M8.3）：点击/曝光等事件的统一上报入口"""
 
-    session_id: str
-    message_id: str | None = None
-    event_type: str = Field(min_length=1, max_length=64)
-    product_id: str | None = None
-    event_data: dict = {}
+    session_id: str = Field(max_length=64)
+    message_id: str | None = Field(default=None, max_length=64)
+    # findings #7：事件类型白名单
+    event_type: Literal["product_impression", "product_click", "compare_open", "feedback"] 
+    product_id: str | None = Field(default=None, max_length=64)
+    event_data: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("event_data")
+    @classmethod
+    def validate_event_data(cls, value: dict) -> dict:
+        # findings #6：无边界 dict 限制条数与单值长度
+        trimmed = {str(k)[:64]: str(v)[:200] for k, v in list(value.items())[:10]}
+        return trimmed
 
 
 @shopping_router.post("/events", dependencies=[Depends(get_user_scope)])
@@ -179,6 +243,11 @@ async def shopping_event(
     user_id: Annotated[str | None, Depends(get_user_scope)] = None,
 ):
     """记录前端行为埋点事件（商品点击等）"""
+
+    # findings #7：会话必须存在；埋点做事件类型白名单（Schema Literal 已限制）
+    owner = await service.shopping_session_repository.get_session_owner(body.session_id)
+    if owner is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
 
     event_data = dict(body.event_data)
     if body.product_id:

@@ -98,6 +98,16 @@ class ShoppingSessionRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_message_session(self, message_id: str) -> str | None:
+        """查询消息所属的会话 ID（不存在返回 None），供反馈归属校验"""
+
+        result = await self.session.execute(
+            select(ShoppingMessageMySQL.session_id).where(
+                ShoppingMessageMySQL.message_id == message_id
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def get_session_messages(self, session_id: str) -> list[dict]:
         """按时间列出会话消息"""
 

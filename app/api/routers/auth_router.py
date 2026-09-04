@@ -7,10 +7,11 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.rate_limit import enforce_rate_limit
 from app.repositories.mysql.meta.user_mysql_repository import UserMySQLRepository
 from app.services.auth_service import hash_password, issue_token, verify_password
 
@@ -45,9 +46,13 @@ class LoginSchema(BaseModel):
 @auth_router.post("/register")
 async def register(
     body: RegisterSchema,
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_meta_session_dependency)],
 ):
     """注册新用户：用户名查重后落库并直接签发令牌"""
+
+    # findings #6：注册/登录限流（每 IP 每分钟 5 次）
+    enforce_rate_limit(f"auth:{request.client.host if request.client else 'unknown'}", 5, 60)
 
     repository = UserMySQLRepository(session)
     if await repository.get_by_username(body.username):
@@ -60,9 +65,12 @@ async def register(
 @auth_router.post("/login")
 async def login(
     body: LoginSchema,
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_meta_session_dependency)],
 ):
     """校验用户名密码，签发 JWT"""
+
+    enforce_rate_limit(f"auth:{request.client.host if request.client else 'unknown'}", 5, 60)
 
     repository = UserMySQLRepository(session)
     user = await repository.get_by_username(body.username)

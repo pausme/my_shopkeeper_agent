@@ -74,6 +74,7 @@ export type ShoppingMessage = {
     | "recommendation"
     | "comparison"
     | "progress"
+    | "notice"
     | "error";
   content: string;
   createdAt: number;
