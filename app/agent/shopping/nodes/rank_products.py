@@ -131,6 +131,11 @@ async def rank_products(
         non_high = [c for c in ranked if risk_summary.get(c["product_id"], {}).get("level") != "high"]
         pool = non_high if non_high else ranked
         pool.sort(key=lambda c: c["final_score"], reverse=True)
+        # 预算内候选充足时不再保留略超预算商品（超预算展示仅在预算内池太薄时兜底）
+        if budget_max:
+            in_budget = [c for c in pool if not c.get("budget_exceeded")]
+            if len(in_budget) >= 3:
+                pool = in_budget
         ranked_products = pool[:top_k]
 
         # 推荐结论（PRD 10.5）：确定性标注，LLM 与前端直接使用
