@@ -5,15 +5,22 @@
 import { Bot, HelpCircle, UserRound } from "lucide-react";
 import { ComparisonTable } from "./ComparisonTable";
 import { ProductCard } from "./ProductCard";
+import { SkeletonCards } from "./SkeletonCards";
 import { cn } from "../lib/format";
-import type { ShoppingMessage } from "../types/shopping";
+import type { RecommendedProduct, ShoppingMessage } from "../types/shopping";
 
 type ShoppingBubbleProps = {
   message: ShoppingMessage;
   onFeedback?: (feedbackType: string, productId: string, messageId: string) => void;
-  onProductClick?: (productId: string, messageId: string) => void;
+  onProductClick?: (productId: string, action: string) => void;
   /** 点击追问快捷选项（直接作为新一轮提问发出） */
   onOptionClick?: (option: string) => void;
+  onDetail?: (productId: string) => void;
+  onCompare?: (productId: string) => void;
+  onAsk?: (productId: string, title: string) => void;
+  compareIds?: string[];
+  /** 对比表上方结论（取自同轮推荐总结） */
+  conclusion?: string;
 };
 
 export function ShoppingBubble({
@@ -21,13 +28,18 @@ export function ShoppingBubble({
   onFeedback,
   onProductClick,
   onOptionClick,
+  onDetail,
+  onCompare,
+  onAsk,
+  compareIds = [],
+  conclusion,
 }: ShoppingBubbleProps) {
   const isUser = message.role === "user";
 
   return (
     <article className={cn("flex gap-3", isUser && "justify-end")}>
       {!isUser && (
-        <div className="mt-1 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-moss text-white">
+        <div className="mt-1 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary text-white">
           <Bot className="h-4 w-4" aria-hidden="true" />
         </div>
       )}
@@ -36,9 +48,9 @@ export function ShoppingBubble({
         <div
           className={cn(
             "border px-5 py-4 shadow-line",
-            isUser && "border-ink/80 bg-ink text-parchment",
-            !isUser && message.kind !== "error" && "border-ink/10 bg-[#fffaf1]/78 backdrop-blur",
-            !isUser && message.kind === "error" && "border-tomato/30 bg-tomato/10",
+            isUser && "border-primary bg-primary text-white",
+            !isUser && message.kind !== "error" && "border-line bg-white shadow-card",
+            !isUser && message.kind === "error" && "border-risk/30 bg-risk/5",
           )}
         >
           {/* 追问气泡 + 快捷选项（PRD 10.2：提供快捷选项，允许跳过） */}
@@ -65,22 +77,32 @@ export function ShoppingBubble({
             </div>
           )}
 
-          {/* 进度占位 */}
+          {/* 进度：紧凑 stepper + 骨架屏（N7.4/N7.5） */}
           {message.kind === "progress" && (
-            <div className="text-sm text-ink/60">
-              <p>{message.content}</p>
+            <div>
+              <p className="text-sm text-ink/60">{message.content}</p>
               {message.steps && message.steps.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {message.steps.map((step) => (
-                    <span
-                      key={step}
-                      className="border border-brass/30 bg-brass/10 px-2 py-0.5 text-[11px] text-ink/70"
-                    >
-                      {step}
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  {message.steps.map((step, index) => (
+                    <span key={step} className="inline-flex items-center gap-1.5">
+                      {index > 0 && <span className="h-3 w-px bg-line" />}
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-[11px]",
+                          index === message.steps!.length - 1
+                            ? "bg-primary/10 font-semibold text-primary"
+                            : "bg-subtle text-ink/45",
+                        )}
+                      >
+                        {step}
+                      </span>
                     </span>
                   ))}
                 </div>
               )}
+              <div className="mt-3">
+                <SkeletonCards />
+              </div>
             </div>
           )}
 
@@ -113,11 +135,11 @@ export function ShoppingBubble({
                               onFeedback(feedbackType, productId, message.messageId ?? "")
                           : undefined
                       }
-                      onProductClick={
-                        onProductClick
-                          ? (productId) => onProductClick(productId, message.messageId ?? "")
-                          : undefined
-                      }
+                      onProductClick={onProductClick}
+                      onDetail={onDetail}
+                      onCompare={onCompare}
+                      onAsk={onAsk}
+                      inCompare={compareIds.includes(product.product_id)}
                     />
                   ))}
                 </div>
@@ -135,6 +157,7 @@ export function ShoppingBubble({
             <ComparisonTable
               headers={message.comparison.headers}
               rows={message.comparison.rows}
+              conclusion={conclusion}
             />
           )}
         </div>

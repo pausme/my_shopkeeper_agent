@@ -1,21 +1,26 @@
 /**
- * 前端应用主组件
- * AI 商品决策助手（PickMate AI）：导购对话、推荐卡片、对比表、反馈与历史会话
+ * PickMate AI 前端主组件（N1/N8 改版）
+ * 导购工作台：首页（搜索前置+场景入口）与对话页，桌面 Web 优先
  */
 import {
   Eraser,
   History,
   KeyRound,
-  Leaf,
   MessageSquarePlus,
-  Server,
+  Scale,
+  Settings,
   ShoppingBag,
+  Sparkles,
+  X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AuthDialog } from "./components/AuthDialog";
 import { Composer } from "./components/Composer";
-import { EmptyState } from "./components/EmptyState";
-import { ShoppingBubble } from "./components/ShoppingBubble";
+import { ComparisonTable } from "./components/ComparisonTable";
+import { ProductCard } from "./components/ProductCard";
+import { ProductDetailModal } from "./components/ProductDetailModal";
+import { ShoppingHome } from "./components/ShoppingHome";
+import { SkeletonCards } from "./components/SkeletonCards";
 import { cn } from "./lib/format";
 import {
   fetchShoppingSessionDetail,
@@ -25,22 +30,31 @@ import {
   streamShoppingQuery,
 } from "./lib/shoppingApi";
 import { getApiToken, getJwt, getUsername, setApiToken, setJwt } from "./lib/agentApiShared";
-import type { ShoppingEvent, ShoppingMessage, ShoppingSessionSummary } from "./types/shopping";
-
-const shoppingExamples = [
-  "想买一个空气炸锅，预算 500 以内，帮我推荐一下",
-  "给爸妈买个实用的家居好物，预算 300",
-  "帮我推荐点好东西",
-  "有哪些母婴用品值得入手？",
-];
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ?? "";
+import type { RecommendedProduct, ShoppingEvent, ShoppingMessage, ShoppingSessionSummary } from "./types/shopping";
 
 function makeId() {
   return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+// N7.2 条件胶囊：从用户输入中提取的条件
+function extractConditions(query: string): string[] {
+  const conditions: string[] = [];
+  const budget = query.match(/(?:预算|以内|以内)[^\d]{0,4}(\d{2,5})/);
+  if (budget) conditions.push(`预算 ${budget[1]} 以内`);
+  const categories = ["厨房小电器", "家居生活", "数码配件", "母婴用品", "空气炸锅", "破壁机", "豆浆机", "安全座椅", "奶瓶", "辅食机", "充电宝", "耳机", "落地灯", "枕头", "按摩仪"];
+  for (const category of categories) {
+    if (query.includes(category)) {
+      conditions.push(category);
+      break;
+    }
+  }
+  const exclusion = query.match(/不要([^，。,.!！?？\s]{1,8})/);
+  if (exclusion) conditions.push(`不要${exclusion[1]}`);
+  return conditions;
+}
+
 export default function App() {
+  const [view, setView] = useState<"home" | "chat">("home");
   const [shoppingMessages, setShoppingMessages] = useState<ShoppingMessage[]>([]);
   const [shoppingSessionId, setShoppingSessionId] = useState("");
   const [shoppingClarificationCount, setShoppingClarificationCount] = useState(0);
@@ -48,16 +62,22 @@ export default function App() {
   const [draft, setDraft] = useState("");
   const [activeController, setActiveController] = useState<AbortController | null>(null);
   const [streamStartedAt, setStreamStartedAt] = useState<number | null>(null);
-  const [tokenPanelOpen, setTokenPanelOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [tokenInput, setTokenInput] = useState("");
   const [authOpen, setAuthOpen] = useState(false);
   const [jwt, setJwtState] = useState(() => getJwt());
   const [username, setUsernameState] = useState(() => getUsername());
+  const [detailProduct, setDetailProduct] = useState<RecommendedProduct | null>(null);
+  const [compareIds, setCompareIds] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLDivElement | null>(null);
 
-  const messages = shoppingMessages;
   const isStreaming = Boolean(activeController);
   const canSubmit = draft.trim().length > 0 && !isStreaming;
+  const lastRecommendation = useMemo(
+    () => [...shoppingMessages].reverse().find((m) => m.kind === "recommendation"),
+    [shoppingMessages],
+  );
 
   useEffect(() => {
     fetchShoppingSessions()
@@ -77,7 +97,7 @@ export default function App() {
       top: scrollRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [messages]);
+  }, [shoppingMessages]);
 
   const patchLastShoppingAssistant = (
     updater: (message: ShoppingMessage) => ShoppingMessage,
@@ -91,7 +111,10 @@ export default function App() {
     });
   };
 
-  const startShoppingQuery = async (rawQuery = draft) => {
+  const startShoppingQuery = async (
+    rawQuery = draft,
+    options: { selectedProductIds?: string[] } = {},
+  ) => {
     const query = rawQuery.trim();
     if (!query || isStreaming) return;
 
@@ -115,9 +138,9 @@ export default function App() {
     setActiveController(controller);
     setStreamStartedAt(Date.now());
     setDraft("");
+    setView("chat");
     setShoppingMessages((current) => [...current, userMessage, placeholder]);
 
-    // 只回传文本类消息作为多轮上下文（推荐卡片不进 history）
     const history = shoppingMessages
       .filter((m) => m.kind === "text" || m.kind === "clarification" || m.kind === "recommendation")
       .map((m) => ({
@@ -200,6 +223,7 @@ export default function App() {
           session_id: shoppingSessionId || undefined,
           history,
           clarification_count: shoppingClarificationCount,
+          selected_product_ids: options.selectedProductIds,
         },
         { signal: controller.signal, onEvent },
       );
@@ -223,6 +247,7 @@ export default function App() {
     } finally {
       setActiveController(null);
       setStreamStartedAt(null);
+      setCompareIds([]);
       fetchShoppingSessions()
         .then(setShoppingSessions)
         .catch(() => {});
@@ -243,21 +268,41 @@ export default function App() {
     }).catch(() => {});
   };
 
-  const handleProductClick = (productId: string, messageId: string) => {
+  const handleProductClick = (productId: string, action: string) => {
     if (!shoppingSessionId) return;
     sendShoppingEvent({
       session_id: shoppingSessionId,
-      message_id: messageId || undefined,
-      event_type: "product_click",
+      event_type: action === "impression" ? "product_impression" : "product_click",
       product_id: productId,
+      event_data: { action },
     });
   };
 
-  /** 追问快捷选项：直接作为新一轮提问发出 */
   const handleOptionClick = (option: string) => {
     if (isStreaming) return;
-    setDraft(option);
     void startShoppingQuery(option);
+  };
+
+  const handleCompare = (productId: string) => {
+    setCompareIds((current) =>
+      current.includes(productId)
+        ? current.filter((id) => id !== productId)
+        : current.length >= 4
+          ? current
+          : [...current, productId],
+    );
+  };
+
+  const handleAskAbout = (productId: string, title: string) => {
+    if (isStreaming) return;
+    void startShoppingQuery(`${title}（${productId}）值不值得买？帮我分析一下`);
+  };
+
+  const submitCompare = () => {
+    if (compareIds.length < 2 || isStreaming) return;
+    void startShoppingQuery(`帮我对比这 ${compareIds.length} 款商品`, {
+      selectedProductIds: compareIds,
+    });
   };
 
   const loadShoppingSession = async (sessionId: string) => {
@@ -275,22 +320,23 @@ export default function App() {
           createdAt: row.created_at ?? Date.now(),
         })),
       );
+      setView("chat");
     } catch {
       // 加载失败静默处理
     }
   };
 
-  const newShoppingSession = () => {
+  const newConsult = () => {
     if (isStreaming) return;
     setShoppingMessages([]);
     setShoppingSessionId("");
     setShoppingClarificationCount(0);
+    setCompareIds([]);
     setDraft("");
+    setView("home");
   };
 
-  const stopQuery = () => {
-    activeController?.abort();
-  };
+  const stopQuery = () => activeController?.abort();
 
   const handleAuthed = (token: string, name: string) => {
     setJwt(token, name);
@@ -305,214 +351,405 @@ export default function App() {
     setUsernameState("");
   };
 
-  const saveToken = () => {
-    setApiToken(tokenInput.trim());
-    setTokenPanelOpen(false);
-  };
-
   const streamElapsed = streamStartedAt ? Math.round((now - streamStartedAt) / 1000) : 0;
+  const conditions = useMemo(
+    () => extractConditions(lastRecommendation?.content ?? "") || [],
+    [lastRecommendation],
+  );
+  const quickFollowUps = ["有没有更便宜的", "只看评分最高的", "帮我比较前两个", "帮我总结避坑要点"];
 
   return (
-    <div className="h-dvh overflow-hidden bg-parchment text-ink">
+    <div className="flex h-dvh flex-col overflow-hidden bg-subtle text-ink">
       {authOpen && (
         <AuthDialog onClose={() => setAuthOpen(false)} onAuthed={handleAuthed} />
       )}
-      <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(90deg,rgba(32,32,29,0.045)_1px,transparent_1px),linear-gradient(rgba(32,32,29,0.035)_1px,transparent_1px)] bg-[size:48px_48px]" />
-      <div className="pointer-events-none fixed inset-0 grain" />
+      {detailProduct && (
+        <ProductDetailModal product={detailProduct} onClose={() => setDetailProduct(null)} />
+      )}
 
-      <div className="relative grid h-full min-h-0 overflow-hidden lg:grid-cols-[300px_minmax(0,1fr)]">
-        <aside className="hidden min-h-0 border-r border-ink/10 bg-[#efe6d8]/85 backdrop-blur lg:flex lg:flex-col">
-          <div className="border-b border-ink/10 px-5 py-5">
-            <div className="flex items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center bg-moss text-white">
-                <ShoppingBag className="h-5 w-5" aria-hidden="true" />
-              </div>
-              <div>
-                <div className="text-base font-semibold tracking-[0.02em]">AI 导购助手</div>
-                <div className="text-xs text-ink/50">PickMate AI</div>
-              </div>
+      {/* 顶部导航（N8.2） */}
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-line bg-white px-4 lg:px-6">
+        <button
+          type="button"
+          onClick={newConsult}
+          className="flex items-center gap-2"
+          title="回到导购首页"
+        >
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-white">
+            <ShoppingBag className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <span className="text-base font-bold text-ink">PickMate AI</span>
+          <span className="hidden text-xs text-ink/40 sm:inline">电商商品决策助手</span>
+        </button>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={newConsult}
+            className={cn(
+              "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+              view === "home" ? "bg-primary/10 text-primary" : "text-ink/60 hover:bg-subtle",
+            )}
+          >
+            首页
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("chat")}
+            disabled={shoppingMessages.length === 0}
+            className={cn(
+              "rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-35",
+              view === "chat" ? "bg-primary/10 text-primary" : "text-ink/60 hover:bg-subtle",
+            )}
+          >
+            当前会话
+          </button>
+
+          {/* 历史会话下拉（N8.1） */}
+          <div className="group relative">
+            <button
+              type="button"
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-ink/60 transition hover:bg-subtle"
+            >
+              <History className="inline h-3.5 w-3.5" aria-hidden="true" /> 历史
+            </button>
+            <div className="invisible absolute right-0 top-full z-40 mt-1 w-72 rounded-xl border border-line bg-white p-2 opacity-0 shadow-panel transition group-hover:visible group-hover:opacity-100">
+              {shoppingSessions.length === 0 && (
+                <div className="px-3 py-2 text-xs text-ink/40">暂无历史会话</div>
+              )}
+              {shoppingSessions.slice(0, 8).map((session) => (
+                <button
+                  key={session.session_id}
+                  type="button"
+                  onClick={() => loadShoppingSession(session.session_id)}
+                  className="w-full rounded-lg px-3 py-2 text-left transition hover:bg-subtle"
+                >
+                  <div className="truncate text-sm text-ink/80">
+                    {session.title || session.last_query || "未命名咨询"}
+                  </div>
+                  <div className="truncate text-[11px] text-ink/40">{session.last_query ?? ""}</div>
+                </button>
+              ))}
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4">
+          {/* 设置（N8.4：令牌/登录收进设置） */}
+          <div className="relative">
             <button
               type="button"
-              onClick={newShoppingSession}
-              disabled={isStreaming}
-              className="flex h-11 w-full items-center justify-center gap-2 bg-ink text-sm font-semibold text-parchment transition hover:bg-soot disabled:cursor-not-allowed disabled:bg-ink/35"
+              onClick={() => setSettingsOpen((open) => !open)}
+              className="rounded-lg p-2 text-ink/55 transition hover:bg-subtle hover:text-ink"
+              aria-label="设置"
             >
-              <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
-              新导购咨询
+              <Settings className="h-4 w-4" aria-hidden="true" />
             </button>
-
-            <section>
-              <div className="mb-2 flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.16em] text-ink/45">
-                <History className="h-3.5 w-3.5" aria-hidden="true" />
-                历史咨询
-              </div>
-              <div className="space-y-1.5">
-                {shoppingSessions.length === 0 && (
-                  <div className="px-1 text-xs text-ink/40">暂无历史会话</div>
-                )}
-                {shoppingSessions.map((session) => (
-                  <button
-                    key={session.session_id}
-                    type="button"
-                    onClick={() => loadShoppingSession(session.session_id)}
-                    disabled={isStreaming}
-                    className={cn(
-                      "w-full border px-3 py-2.5 text-left transition",
-                      session.session_id === shoppingSessionId
-                        ? "border-moss/40 bg-white/75"
-                        : "border-ink/10 bg-white/42 hover:bg-white/60",
-                    )}
-                  >
-                    <div className="truncate text-sm text-ink/80">
-                      {session.title || session.last_query || "未命名咨询"}
-                    </div>
-                    <div className="mt-0.5 truncate text-[11px] text-ink/40">
-                      {session.last_query ?? ""}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <section>
-              <div className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.16em] text-ink/45">
-                试试这样问
-              </div>
-              <div className="space-y-2">
-                {shoppingExamples.map((example) => (
-                  <button
-                    key={example}
-                    type="button"
-                    disabled={isStreaming}
-                    onClick={() => setDraft(example)}
-                    className="w-full border border-ink/10 bg-white/42 px-3 py-3 text-left text-sm leading-5 text-ink/75 transition hover:border-moss/35 hover:bg-white/75 disabled:cursor-not-allowed disabled:opacity-55"
-                  >
-                    {example}
-                  </button>
-                ))}
-              </div>
-            </section>
-          </div>
-
-          <div className="border-t border-ink/10 p-4">
-            <div className="grid gap-2 text-xs text-ink/55">
-              <div className="flex items-center justify-between gap-3">
-                <span className="inline-flex items-center gap-2">
-                  <Server className="h-3.5 w-3.5" aria-hidden="true" />
-                  API
-                </span>
-                <span className="truncate font-mono">{API_BASE_URL || "同源"}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => (jwt ? handleLogout() : setAuthOpen(true))}
-                className="flex items-center justify-between transition hover:text-ink"
-              >
-                <span className="inline-flex items-center gap-2">
-                  <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
-                  {jwt ? "账号" : "登录"}
-                </span>
-                <span>{jwt ? `${username} · 退出` : "未登录"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setTokenInput(getApiToken());
-                  setTokenPanelOpen((open) => !open);
-                }}
-                className="flex items-center justify-between transition hover:text-ink"
-              >
-                <span className="inline-flex items-center gap-2">
-                  <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
-                  访问令牌
-                </span>
-                <span>{getApiToken() ? "已配置" : "未配置"}</span>
-              </button>
-              {tokenPanelOpen && (
-                <div className="flex items-center gap-2 pt-1">
-                  <input
-                    value={tokenInput}
-                    onChange={(event) => setTokenInput(event.target.value)}
-                    placeholder="粘贴服务器 API_TOKEN"
-                    className="min-w-0 flex-1 border border-ink/15 bg-white/70 px-2 py-1.5 text-xs outline-none focus:border-moss/40"
-                  />
+            {settingsOpen && (
+              <div className="absolute right-0 top-full z-40 mt-1 w-72 rounded-xl border border-line bg-white p-4 shadow-panel">
+                <div className="mb-3 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-ink">设置</span>
                   <button
                     type="button"
-                    onClick={saveToken}
-                    className="shrink-0 bg-ink px-2.5 py-1.5 text-xs font-semibold text-parchment transition hover:bg-soot"
+                    onClick={() => setSettingsOpen(false)}
+                    className="text-ink/40 transition hover:text-ink"
+                    aria-label="关闭设置"
                   >
-                    保存
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
                   </button>
                 </div>
-              )}
-            </div>
-          </div>
-        </aside>
-
-        <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-          <header className="flex h-16 shrink-0 items-center justify-between border-b border-ink/10 bg-parchment/88 px-4 backdrop-blur lg:px-6">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="grid h-9 w-9 shrink-0 place-items-center bg-moss text-white lg:hidden">
-                <ShoppingBag className="h-4 w-4" aria-hidden="true" />
-              </div>
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-ink">AI 商品决策助手</div>
-                <div className="truncate text-xs text-ink/45">LangGraph 导购链路 / PickMate AI</div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={newShoppingSession}
-              disabled={messages.length === 0 || isStreaming}
-              className={cn(
-                "grid h-9 w-9 place-items-center rounded-full text-ink/55 transition hover:bg-ink/5 hover:text-ink disabled:cursor-not-allowed disabled:opacity-35",
-              )}
-              title="结束当前咨询"
-              aria-label="结束当前咨询"
-            >
-              <Eraser className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </header>
-
-          <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-            {messages.length === 0 ? (
-              <EmptyState examples={shoppingExamples} onUseExample={(example) => setDraft(example)} />
-            ) : (
-              <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 lg:px-8">
-                {messages.map((message) => (
-                  <ShoppingBubble
-                    key={message.id}
-                    message={message}
-                    onFeedback={handleShoppingFeedback}
-                    onProductClick={handleProductClick}
-                    onOptionClick={handleOptionClick}
-                  />
-                ))}
+                <button
+                  type="button"
+                  onClick={() => (jwt ? handleLogout() : setAuthOpen(true))}
+                  className="mb-3 w-full rounded-lg border border-line px-3 py-2 text-sm transition hover:border-primary/40 hover:text-primary"
+                >
+                  {jwt ? `已登录：${username}（退出）` : "登录 / 注册"}
+                </button>
+                <div className="text-xs text-ink/50">
+                  <div className="mb-1.5 flex items-center gap-1.5 font-medium">
+                    <KeyRound className="h-3 w-3" aria-hidden="true" />
+                    访问令牌
+                  </div>
+                  <div className="flex gap-1.5">
+                    <input
+                      value={tokenInput}
+                      onChange={(event) => setTokenInput(event.target.value)}
+                      placeholder={getApiToken() ? "已配置" : "粘贴 API_TOKEN"}
+                      className="min-w-0 flex-1 rounded-lg border border-line px-2.5 py-1.5 outline-none focus:border-primary/50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setApiToken(tokenInput.trim());
+                        setSettingsOpen(false);
+                      }}
+                      className="rounded-lg bg-primary px-3 text-xs font-semibold text-white transition hover:bg-primary-dark"
+                    >
+                      保存
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
+        </div>
+      </header>
 
-          <div className="border-t border-ink/10 bg-[#efe6d8]/45 px-4 py-2 text-center text-xs text-ink/45">
-            <span className="inline-flex items-center gap-2">
-              <Leaf className="h-3.5 w-3.5 text-moss" aria-hidden="true" />
-              {isStreaming ? `运行中 · 已 ${streamElapsed}s` : "导购就绪"}
-            </span>
-          </div>
-          <Composer
-            value={draft}
-            disabled={!canSubmit}
-            isStreaming={isStreaming}
-            onChange={setDraft}
-            onSubmit={() => startShoppingQuery()}
-            onStop={stopQuery}
-            placeholder="描述你的购买需求，例如：想买个空气炸锅预算 500..."
+      {/* 主体 */}
+      {view === "home" ? (
+        <main className="min-h-0 flex-1 overflow-y-auto">
+          <ShoppingHome
+            sessions={shoppingSessions}
+            onSubmit={(query) => void startShoppingQuery(query)}
+            onOpenSession={loadShoppingSession}
           />
         </main>
+      ) : (
+        <>
+          <main ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+            {shoppingMessages.length === 0 ? (
+              <div className="grid h-full place-items-center text-sm text-ink/40">
+                开始你的第一次咨询吧
+              </div>
+            ) : (
+              <div className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-6 lg:px-8">
+                {shoppingMessages.map((message, index) => {
+                  const isComparison = message.kind === "comparison";
+                  const conclusion = isComparison
+                    ? [...shoppingMessages.slice(0, index)]
+                        .reverse()
+                        .find((m) => m.kind === "recommendation")?.content
+                    : undefined;
+                  return (
+                    <div key={message.id}>
+                      <div className={cn("flex gap-3", message.role === "user" && "justify-end")}>
+                        {message.role === "assistant" && (
+                          <span className="mt-1 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary text-white">
+                            <Sparkles className="h-4 w-4" aria-hidden="true" />
+                          </span>
+                        )}
+                        <div className="min-w-0 max-w-[880px] flex-1">
+                          {message.kind === "text" && message.role === "user" && (
+                            <div className="inline-block rounded-xl2 bg-primary px-4 py-2.5 text-[15px] leading-6 text-white shadow-card">
+                              {message.content}
+                            </div>
+                          )}
+                          {(message.kind !== "text" || message.role !== "user") && (
+                            <div
+                              className={cn(
+                                "rounded-xl2 border bg-white px-5 py-4 shadow-card",
+                                message.kind === "error" && "border-risk/30 bg-risk/5",
+                              )}
+                            >
+                              {message.kind === "clarification" && (
+                                <div>
+                                  <p className="flex items-start gap-2 text-[15px] leading-7 text-ink">
+                                    <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-brass" />
+                                    {message.content}
+                                  </p>
+                                  {message.options && message.options.length > 0 && (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                      {message.options.map((option) => (
+                                        <button
+                                          key={option}
+                                          type="button"
+                                          onClick={() => handleOptionClick(option)}
+                                          className="rounded-full border border-line bg-white px-3.5 py-1.5 text-xs font-semibold text-ink/75 transition hover:border-primary/50 hover:text-primary"
+                                        >
+                                          {option}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {message.kind === "progress" && (
+                                <div>
+                                  <p className="text-sm text-ink/60">{message.content}</p>
+                                  {message.steps && message.steps.length > 0 && (
+                                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                      {message.steps.map((step, stepIndex) => (
+                                        <span key={step} className="inline-flex items-center gap-1.5">
+                                          {stepIndex > 0 && <span className="h-3 w-px bg-line" />}
+                                          <span
+                                            className={cn(
+                                              "rounded-full px-2 py-0.5 text-[11px]",
+                                              stepIndex === message.steps!.length - 1
+                                                ? "bg-primary/10 font-semibold text-primary"
+                                                : "bg-subtle text-ink/45",
+                                            )}
+                                          >
+                                            {step}
+                                          </span>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  <div className="mt-3">
+                                    <SkeletonCards />
+                                  </div>
+                                </div>
+                              )}
+
+                              {message.kind === "error" && (
+                                <p className="text-sm text-risk">
+                                  {message.content}
+                                  {message.error ? `：${message.error}` : ""}
+                                </p>
+                              )}
+
+                              {message.kind === "recommendation" && (
+                                <div>
+                                  <p className="text-[15px] leading-7 text-ink">{message.content}</p>
+                                  {message.products && message.products.length > 0 && (
+                                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                      {message.products.map((product) => (
+                                        <ProductCard
+                                          key={product.product_id}
+                                          product={product}
+                                          onFeedback={(feedbackType, productId) =>
+                                            handleShoppingFeedback(
+                                              feedbackType,
+                                              productId,
+                                              message.messageId ?? "",
+                                            )
+                                          }
+                                          onProductClick={(productId, action) =>
+                                            handleProductClick(productId, action)
+                                          }
+                                          onDetail={(productId) => {
+                                            const target = message.products?.find(
+                                              (item) => item.product_id === productId,
+                                            );
+                                            if (target) setDetailProduct(target);
+                                          }}
+                                          onCompare={handleCompare}
+                                          onAsk={handleAskAbout}
+                                          inCompare={compareIds.includes(product.product_id)}
+                                        />
+                                      ))}
+                                    </div>
+                                  )}
+                                  {message.nextQuestion && (
+                                    <p className="mt-3 border-l-2 border-primary/40 pl-2 text-xs leading-5 text-ink/60">
+                                      可以继续告诉我：{message.nextQuestion}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+
+                              {message.kind === "comparison" && message.comparison && (
+                                <ComparisonTable
+                                  headers={message.comparison.headers}
+                                  rows={message.comparison.rows}
+                                  conclusion={conclusion}
+                                />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 推荐后的快捷追问（N7.3） */}
+                      {message.kind === "recommendation" &&
+                        index === shoppingMessages.length - 1 &&
+                        !isStreaming && (
+                          <div className="mt-2 flex flex-wrap gap-1.5 pl-12">
+                            {quickFollowUps.map((chip) => (
+                              <button
+                                key={chip}
+                                type="button"
+                                onClick={() => void startShoppingQuery(chip)}
+                                className="rounded-full border border-line bg-white px-3 py-1 text-xs text-ink/60 transition hover:border-primary/45 hover:text-primary"
+                              >
+                                {chip}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </main>
+
+          {/* 条件胶囊（N7.2） */}
+          {conditions.length > 0 && (
+            <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-line bg-white px-4 py-1.5 text-[11px] lg:px-8">
+              <span className="text-ink/40">当前条件</span>
+              {conditions.map((condition) => (
+                <span
+                  key={condition}
+                  className="inline-flex items-center gap-1 rounded-full bg-primary/8 px-2 py-0.5 text-primary"
+                >
+                  {condition}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* 对比托盘（N4.7 加入对比） */}
+          {compareIds.length > 0 && (
+            <div className="flex shrink-0 items-center gap-2 border-t border-line bg-white px-4 py-2 lg:px-8">
+              <Scale className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+              <span className="text-xs text-ink/60">对比栏（{compareIds.length}/4）</span>
+              {compareIds.map((id) => (
+                <span
+                  key={id}
+                  className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary"
+                >
+                  {id}
+                  <button
+                    type="button"
+                    onClick={() => handleCompare(id)}
+                    aria-label={`移除 ${id}`}
+                    className="transition hover:text-risk"
+                  >
+                    <X className="h-2.5 w-2.5" aria-hidden="true" />
+                  </button>
+                </span>
+              ))}
+              <button
+                type="button"
+                onClick={submitCompare}
+                disabled={compareIds.length < 2 || isStreaming}
+                className="ml-auto rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                开始对比
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* 状态栏 + 输入区 */}
+      <div className="border-t border-line bg-white px-4 py-1.5 text-center text-xs text-ink/40">
+        {isStreaming ? `导购运行中 · 已 ${streamElapsed}s` : "就绪"}
       </div>
+      <div ref={composerRef}>
+        <Composer
+          value={draft}
+          disabled={!canSubmit}
+          isStreaming={isStreaming}
+          onChange={setDraft}
+          onSubmit={() => void startShoppingQuery()}
+          onStop={stopQuery}
+          placeholder="描述你的购买需求，例如：想买个空气炸锅预算 500..."
+        />
+      </div>
+
+      {/* 悬浮操作：新咨询 / 清空（在对话视图中） */}
+      {view === "chat" && shoppingMessages.length > 0 && !isStreaming && (
+        <button
+          type="button"
+          onClick={newConsult}
+          className="fixed bottom-28 right-6 z-30 inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-panel transition hover:bg-primary-dark"
+        >
+          <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
+          新咨询
+          <Eraser className="ml-1 h-3 w-3 opacity-60" aria-hidden="true" />
+        </button>
+      )}
     </div>
   );
 }

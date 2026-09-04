@@ -27,6 +27,7 @@ export type RecommendedProduct = {
   promotion_price: number | null;
   rating: number;
   sales_30d: number | null;
+  review_count?: number | null;
   attributes: Record<string, string>;
   semantic_score?: number;
   reason: string;

@@ -32,6 +32,7 @@ export async function streamShoppingQuery(
     session_id?: string;
     history?: Array<{ role: string; content: string }>;
     clarification_count?: number;
+    selected_product_ids?: string[];
   },
   options: {
     signal?: AbortSignal;
@@ -111,6 +112,31 @@ export function fetchShoppingSessionDetail(
   return requestJson(`/api/shopping/sessions/${sessionId}`);
 }
 
+export type ProductSummary = {
+  product_id: string;
+  title: string;
+  category_name: string;
+  brand: string | null;
+  price: number;
+  promotion_price: number | null;
+  rating: number;
+  sales_30d: number | null;
+  review_count: number | null;
+  attributes: Record<string, string>;
+  risk: {
+    level: string;
+    summary: string;
+    positive_summary: string;
+    suitable_for: string;
+    not_suitable_for: string;
+    sample_size: number;
+  };
+};
+
+export function fetchProductSummary(productId: string): Promise<ProductSummary> {
+  return requestJson(`/api/shopping/products/${productId}/summary`);
+}
+
 export function sendShoppingFeedback(payload: {
   session_id: string;
   message_id?: string;
@@ -124,12 +150,13 @@ export function sendShoppingFeedback(payload: {
   });
 }
 
-/** 行为埋点上报（商品点击等），fire-and-forget */
+/** 行为埋点上报（商品点击/曝光等），fire-and-forget */
 export function sendShoppingEvent(payload: {
   session_id: string;
   message_id?: string;
   event_type: string;
   product_id?: string;
+  event_data?: Record<string, string>;
 }): void {
   requestJson("/api/shopping/events", {
     method: "POST",
