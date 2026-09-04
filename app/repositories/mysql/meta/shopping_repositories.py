@@ -206,6 +206,16 @@ class ShoppingSessionRepository:
         )
         return recommendation_id
 
+    async def get_recommendation_by_message(self, message_id: str) -> dict | None:
+        """按消息 ID 查推荐结果（历史回放还原商品卡用）"""
+
+        result = await self.session.execute(
+            select(ShoppingRecommendationMySQL.result_json).where(
+                ShoppingRecommendationMySQL.message_id == message_id
+            )
+        )
+        return result.scalar_one_or_none()
+
     # ---------- 反馈 ----------
 
     async def save_event(

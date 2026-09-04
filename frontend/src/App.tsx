@@ -563,6 +563,14 @@ export default function App() {
                                 message.kind === "error" && "border-risk/30 bg-risk/5",
                               )}
                             >
+                              {/* findings：历史回放的推荐消息映射为 assistant+text，
+                                  此前缺少该分支导致回放出现空气泡 */}
+                              {message.kind === "text" && (
+                                <p className="whitespace-pre-wrap text-[15px] leading-7 text-ink">
+                                  {message.content}
+                                </p>
+                              )}
+
                               {message.kind === "clarification" && (
                                 <div>
                                   <p className="flex items-start gap-2 text-[15px] leading-7 text-ink">
