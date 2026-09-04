@@ -3,9 +3,11 @@
  * 渲染用户提问、追问气泡、推荐结果（商品卡片组）、对比表与错误
  */
 import { Bot, HelpCircle, UserRound } from "lucide-react";
+import { Download } from "lucide-react";
 import { ComparisonTable } from "./ComparisonTable";
 import { ProductCard } from "./ProductCard";
 import { SkeletonCards } from "./SkeletonCards";
+import { downloadCsv } from "../lib/csv";
 import { cn } from "../lib/format";
 import type { RecommendedProduct, ShoppingMessage } from "../types/shopping";
 
@@ -143,6 +145,29 @@ export function ShoppingBubble({
                     />
                   ))}
                 </div>
+              )}
+              {message.products && message.products.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    downloadCsv(
+                      "pickmate-推荐",
+                      ["商品", "结论", "到手价", "评分", "月销", "推荐理由"],
+                      message.products!.map((p) => [
+                        p.title,
+                        p.verdict ?? "",
+                        p.promotion_price ?? p.price,
+                        p.rating,
+                        p.sales_30d ?? "",
+                        p.reason,
+                      ]),
+                    )
+                  }
+                  className="mt-3 inline-flex items-center gap-1 rounded border border-line px-2 py-1 text-[11px] text-ink/55 transition hover:border-primary/40 hover:text-primary"
+                >
+                  <Download className="h-3 w-3" aria-hidden="true" />
+                  导出 CSV
+                </button>
               )}
               {message.nextQuestion && (
                 <p className="mt-3 border-l-2 border-brass/50 pl-2 text-xs leading-5 text-ink/65">

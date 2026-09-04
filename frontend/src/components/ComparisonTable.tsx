@@ -3,6 +3,8 @@
  * 商品为列、维度为行；价格最低/评分最高的单元格自动高亮（N5.2）
  */
 import { useEffect, useState } from "react";
+import { Download } from "lucide-react";
+import { downloadCsv } from "../lib/csv";
 import { cn } from "../lib/format";
 
 type ComparisonTableProps = {
@@ -65,6 +67,20 @@ export function ComparisonTable({ headers, rows, warning, conclusion }: Comparis
         <div className="flex items-center gap-2 text-[11px] text-ink/45">
           <span className="rounded bg-price/10 px-1.5 py-0.5 text-price">价格最低</span>
           <span className="rounded bg-good/10 px-1.5 py-0.5 text-good">评分最高</span>
+          <button
+            type="button"
+            onClick={() =>
+              downloadCsv(
+                "pickmate-对比",
+                ["维度", ...rows.map((row) => row["商品"] || row.product_id)],
+                dims.map((dim) => [dim, ...rows.map((row) => row[dim] || "暂无数据")]),
+              )
+            }
+            className="inline-flex items-center gap-1 rounded border border-line px-2 py-0.5 transition hover:border-primary/40 hover:text-primary"
+          >
+            <Download className="h-3 w-3" aria-hidden="true" />
+            导出 CSV
+          </button>
         </div>
       </div>
 
