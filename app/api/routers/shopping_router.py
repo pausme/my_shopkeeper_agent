@@ -62,10 +62,12 @@ async def _ensure_session_access(
 ) -> None:
     """会话访问校验（findings #4/#7）：会话必须存在，登录身份需匹配属主"""
 
-    owner = await service.shopping_session_repository.get_session_owner(session_id)
-    if owner is None:
+    exists, owner = await service.shopping_session_repository.get_session_exists_and_owner(
+        session_id
+    )
+    if not exists:
         raise HTTPException(status_code=404, detail="会话不存在")
-    if user_id is not None and owner != user_id:
+    if user_id is not None and owner is not None and owner != user_id:
         raise HTTPException(status_code=403, detail="无权访问该会话")
 
 
@@ -138,10 +140,14 @@ async def shopping_query(
     enforce_rate_limit(f"query:{client_key(request.client.host if request.client else None, user_id)}", 10, 60)
     # findings #5：会话归属校验——已有会话只能由属主（或创建时的同等匿名身份）继续
     if body.session_id:
-        owner = await service.shopping_session_repository.get_session_owner(body.session_id)
-        if owner is None:
+        exists, owner = (
+            await service.shopping_session_repository.get_session_exists_and_owner(
+                body.session_id
+            )
+        )
+        if not exists:
             raise HTTPException(status_code=404, detail="会话不存在")
-        if owner and user_id and owner != user_id:
+        if user_id is not None and owner is not None and owner != user_id:
             raise HTTPException(status_code=403, detail="无权访问该会话")
 
     return StreamingResponse(
@@ -207,10 +213,13 @@ async def shopping_session_detail(
 ):
     """获取单个会话的消息历史（属主校验：登录身份不匹配时视为不存在）"""
 
-    owner = await service.shopping_session_repository.get_session_owner(session_id)
-    if owner is None:
+    exists, owner = (
+        await service.shopping_session_repository.get_session_exists_and_owner(session_id)
+    )
+    if not exists:
         raise HTTPException(status_code=404, detail="会话不存在")
-    if user_id is not None and owner != user_id:
+    if user_id is not None and owner is not None and owner != user_id:
+        # 统一 404，不暴露他人会话存在性
         raise HTTPException(status_code=404, detail="会话不存在")
     messages = await service.shopping_session_repository.get_session_messages(session_id)
     if not messages:
@@ -245,8 +254,10 @@ async def shopping_event(
     """记录前端行为埋点事件（商品点击等）"""
 
     # findings #7：会话必须存在；埋点做事件类型白名单（Schema Literal 已限制）
-    owner = await service.shopping_session_repository.get_session_owner(body.session_id)
-    if owner is None:
+    exists, _ = await service.shopping_session_repository.get_session_exists_and_owner(
+        body.session_id
+    )
+    if not exists:
         raise HTTPException(status_code=404, detail="会话不存在")
 
     event_data = dict(body.event_data)

@@ -87,16 +87,27 @@ class ShoppingSessionRepository:
             for row in result.scalars()
         ]
 
-    async def get_session_owner(self, session_id: str) -> str | None:
-        """查询会话属主 user_id（不存在返回 None）"""
+    async def get_session_exists_and_owner(
+        self, session_id: str
+    ) -> tuple[bool, str | None]:
+        """查询会话是否存在及其属主
+
+        返回 (exists, owner)：owner 为 None 表示匿名会话（共享令牌创建），
+        与"会话不存在"是两回事，调用方必须区分
+        """
 
         result = await self.session.execute(
-            select(ShoppingSessionMySQL.user_id).where(
+            select(
+                ShoppingSessionMySQL.session_id, ShoppingSessionMySQL.user_id
+            ).where(
                 ShoppingSessionMySQL.session_id == session_id,
                 ShoppingSessionMySQL.is_deleted == 0,
             )
         )
-        return result.scalar_one_or_none()
+        row = result.first()
+        if row is None:
+            return False, None
+        return True, row.user_id
 
     async def get_message_session(self, message_id: str) -> str | None:
         """查询消息所属的会话 ID（不存在返回 None），供反馈归属校验"""
