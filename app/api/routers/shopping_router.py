@@ -288,12 +288,19 @@ async def shopping_event(
 ):
     """记录前端行为埋点事件（商品点击等）"""
 
-    # findings #7：会话必须存在；埋点做事件类型白名单（Schema Literal 已限制）
-    exists, _ = await service.shopping_session_repository.get_session_exists_and_owner(
+    # findings #7/R2：会话必须存在，登录身份需匹配属主（防跨用户埋点污染）
+    exists, owner = await service.shopping_session_repository.get_session_exists_and_owner(
         body.session_id
     )
-    if not exists:
+    if not exists or (user_id is not None and owner != user_id):
         raise HTTPException(status_code=404, detail="会话不存在")
+    # message 必须属于该会话，杜绝伪造消息归属
+    if body.message_id:
+        message_session = await service.shopping_session_repository.get_message_session(
+            body.message_id
+        )
+        if message_session is None or message_session != body.session_id:
+            raise HTTPException(status_code=404, detail="消息不存在")
 
     event_data = dict(body.event_data)
     if body.product_id:
