@@ -37,3 +37,9 @@ def client_key(request_ip: str | None, identity: str | None) -> str:
     """限流 key：优先用登录身份，否则用客户端 IP"""
 
     return identity or (request_ip or "anonymous")
+
+
+def is_loopback(request_ip: str | None) -> bool:
+    """服务器本地回环地址（冒烟/评测脚本直连 8000，端口未对公网开放）"""
+
+    return request_ip in ("127.0.0.1", "::1", "localhost")

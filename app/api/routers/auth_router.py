@@ -51,8 +51,12 @@ async def register(
 ):
     """注册新用户：用户名查重后落库并直接签发令牌"""
 
-    # findings #6：注册/登录限流（每 IP 每分钟 5 次）
-    enforce_rate_limit(f"auth:{request.client.host if request.client else 'unknown'}", 5, 60)
+    # findings #6：注册/登录限流（每 IP 每分钟 5 次）；本地回环豁免
+    from app.core.rate_limit import is_loopback
+
+    client_ip = request.client.host if request.client else None
+    if not is_loopback(client_ip):
+        enforce_rate_limit(f"auth:{client_ip or 'unknown'}", 5, 60)
 
     # R3：用户名统一 strip，注册/登录共用同一套规范化，防尾随空格产生影子账号
     username = body.username.strip()
@@ -75,7 +79,11 @@ async def login(
 ):
     """校验用户名密码，签发 JWT"""
 
-    enforce_rate_limit(f"auth:{request.client.host if request.client else 'unknown'}", 5, 60)
+    from app.core.rate_limit import is_loopback
+
+    client_ip = request.client.host if request.client else None
+    if not is_loopback(client_ip):
+        enforce_rate_limit(f"auth:{client_ip or 'unknown'}", 5, 60)
 
     # R3：登录侧同样 strip，与注册规范化一致
     username = body.username.strip()

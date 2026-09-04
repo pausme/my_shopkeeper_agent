@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field, field_validator
 from starlette.responses import StreamingResponse
 
 from app.api.dependencies import get_shopping_service
-from app.core.rate_limit import client_key, enforce_rate_limit
+from app.core.rate_limit import client_key, enforce_rate_limit, is_loopback
 from app.repositories.mysql.meta.user_mysql_repository import UserMySQLRepository
 from app.services.auth_service import verify_token
 from app.services.shopping_agent_service import ShoppingAgentService
@@ -137,8 +137,10 @@ async def shopping_query(
 ):
     """发起导购问答：流式返回追问、召回、分析、推荐与对比"""
 
-    # findings #6：按身份（或 IP）限流
-    enforce_rate_limit(f"query:{client_key(request.client.host if request.client else None, user_id)}", 10, 60)
+    # findings #6：按身份（或 IP）限流；本地回环豁免（冒烟/评测直连，端口未对公网开放）
+    client_ip = request.client.host if request.client else None
+    if not is_loopback(client_ip):
+        enforce_rate_limit(f"query:{client_key(client_ip, user_id)}", 10, 60)
     # findings #5：会话归属校验——已有会话只能由属主（或创建时的同等匿名身份）继续
     if body.session_id:
         exists, owner = (
@@ -184,7 +186,9 @@ async def shopping_feedback(
         if message_session is None or message_session != body.session_id:
             raise HTTPException(status_code=404, detail="消息不存在")
 
-    enforce_rate_limit(f"feedback:{client_key(request.client.host if request.client else None, user_id)}", 20, 60)
+    client_ip = request.client.host if request.client else None
+    if not is_loopback(client_ip):
+        enforce_rate_limit(f"feedback:{client_key(client_ip, user_id)}", 20, 60)
     feedback_id = await service.shopping_session_repository.save_feedback(
         body.session_id,
         body.message_id,
