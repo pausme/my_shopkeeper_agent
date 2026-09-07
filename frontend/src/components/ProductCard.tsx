@@ -177,7 +177,7 @@ export function ProductCard({
               track("detail");
               onDetail?.(product.product_id);
             }}
-            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-line px-2 py-1 text-xs font-medium text-ink/70 transition hover:border-primary/40 hover:text-primary"
+            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-primary-dark"
           >
             <BookOpenCheck className="h-3 w-3" aria-hidden="true" />
             查看详情
@@ -193,7 +193,7 @@ export function ProductCard({
               "inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-2 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-45",
               inCompare
                 ? "border-primary/40 bg-primary/10 text-primary"
-                : "border-line text-ink/70 hover:border-primary/40 hover:text-primary",
+                : "border-primary/40 text-primary hover:bg-primary/5",
             )}
           >
             <Scale className="h-3 w-3" aria-hidden="true" />
@@ -205,7 +205,7 @@ export function ProductCard({
               track("ask");
               onAsk?.(product.product_id, product.title);
             }}
-            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-line px-2 py-1 text-xs font-medium text-ink/70 transition hover:border-primary/40 hover:text-primary"
+            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium text-ink/60 transition hover:text-ink"
           >
             <MessageSquarePlus className="h-3 w-3" aria-hidden="true" />
             继续追问
@@ -226,7 +226,7 @@ function FeedbackInline({ onFeedback }: { onFeedback: (type: string) => void }) 
     return (
       <span className="inline-flex items-center gap-1 text-[11px] text-good">
         <Check className="h-3 w-3" aria-hidden="true" />
-        感谢反馈
+        已记录，会帮推荐更准
       </span>
     );
   }

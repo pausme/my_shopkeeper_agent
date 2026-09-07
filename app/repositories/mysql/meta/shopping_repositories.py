@@ -26,6 +26,17 @@ def new_id(prefix: str) -> str:
     return f"{prefix}{uuid.uuid4().hex[:20].upper()}"
 
 
+def _sanitize_title(title: str | None) -> str:
+    """会话标题治理（N11.6）：过短或纯数字的输入（如"1""跳过"）兜底为日期式标题"""
+
+    from datetime import datetime
+
+    cleaned = (title or "").strip()
+    if len(cleaned) < 4 or cleaned.isdigit() or cleaned in ("跳过", "不确定", "不知道"):
+        return f"导购咨询 {datetime.now().strftime('%m-%d %H:%M')}"
+    return cleaned[:255]
+
+
 class ShoppingSessionRepository:
     """导购会话域的持久化"""
 
@@ -47,7 +58,7 @@ class ShoppingSessionRepository:
             row = ShoppingSessionMySQL(
                 session_id=session_id,
                 user_id=user_id,
-                title=(title or "新导购会话")[:255],
+                title=_sanitize_title(title),
                 status="active",
                 last_query=(title or "")[:1024],
             )

@@ -63,6 +63,7 @@ export default function App() {
   const [activeController, setActiveController] = useState<AbortController | null>(null);
   const [streamStartedAt, setStreamStartedAt] = useState<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [tokenInput, setTokenInput] = useState("");
   const [authOpen, setAuthOpen] = useState(false);
   const [jwt, setJwtState] = useState(() => getJwt());
@@ -179,12 +180,13 @@ export default function App() {
         if (event.session_id && !shoppingSessionId) {
           setShoppingSessionId(event.session_id);
         }
+        const stepLabel = STEP_LABELS[event.step] ?? event.step;
         patchLastShoppingAssistant((message) => ({
           ...message,
-          content: `正在执行：${event.step}`,
-          steps: message.steps?.includes(event.step)
+          content: `正在${stepLabel}...`,
+          steps: message.steps?.includes(stepLabel)
             ? message.steps
-            : [...(message.steps ?? []), event.step],
+            : [...(message.steps ?? []), stepLabel],
         }));
         return;
       }
@@ -429,6 +431,26 @@ export default function App() {
   );
   const quickFollowUps = ["有没有更便宜的", "只看评分最高的", "帮我比较前两个", "帮我总结避坑要点"];
 
+// N11.9 过程文案用户友好化：研发术语 -> 用户视角
+const STEP_LABELS: Record<string, string> = {
+  理解需求: "理解你的需求",
+  改写追问: "整理你的问题",
+  判断是否追问: "确认需求是否完整",
+  召回商品: "筛选候选商品",
+  分析评价: "分析评价与风险",
+  商品排序: "综合比较候选",
+  生成推荐: "整理推荐理由",
+};
+
+// N11.6 标题兜底：过短/纯数字标题不可用
+function displayTitle(title: string | null | undefined, fallback: string | null | undefined): string {
+  const t = (title ?? "").trim();
+  if (t.length >= 4 && !/^\d+$/.test(t)) return t;
+  const f = (fallback ?? "").trim();
+  if (f.length >= 4 && !/^\d+$/.test(f)) return f.slice(0, 24);
+  return "导购咨询";
+}
+
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-subtle text-ink">
       {authOpen && (
@@ -464,39 +486,71 @@ export default function App() {
           >
             首页
           </button>
-          <button
-            type="button"
-            onClick={() => setView("chat")}
-            disabled={shoppingMessages.length === 0}
-            className={cn(
-              "rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-35",
-              view === "chat" ? "bg-primary/10 text-primary" : "text-ink/60 hover:bg-subtle",
-            )}
-          >
-            当前会话
-          </button>
-
-          {/* 历史会话下拉（N8.1） */}
-          <div className="group relative">
+          {/* N11.4：无会话时隐藏"当前会话"，避免不可点的禁用态 */}
+          {shoppingMessages.length > 0 && (
             <button
               type="button"
-              className="rounded-lg px-3 py-1.5 text-sm font-medium text-ink/60 transition hover:bg-subtle"
+              onClick={() => setView("chat")}
+              className={cn(
+                "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                view === "chat" ? "bg-primary/10 text-primary" : "text-ink/60 hover:bg-subtle",
+              )}
+            >
+              当前会话
+            </button>
+          )}
+
+          {/* 历史会话下拉（N8.1；N11.7 hover 改点击展开，点外部关闭） */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setHistoryOpen((open) => !open)}
+              className={cn(
+                "rounded-lg px-3 py-1.5 text-sm font-medium text-ink/60 transition hover:bg-subtle",
+                historyOpen && "bg-subtle text-ink",
+              )}
             >
               <History className="inline h-3.5 w-3.5" aria-hidden="true" /> 历史
             </button>
-            <div className="invisible absolute right-0 top-full z-40 mt-1 w-72 rounded-xl border border-line bg-white p-2 opacity-0 shadow-panel transition group-hover:visible group-hover:opacity-100">
+            {historyOpen && (
+              <div
+                className="fixed inset-0 z-30"
+                onClick={() => setHistoryOpen(false)}
+                aria-hidden="true"
+              />
+            )}
+            <div
+              className={cn(
+                "absolute right-0 top-full z-40 mt-1 w-72 rounded-xl border border-line bg-white p-2 shadow-panel transition",
+                historyOpen ? "visible opacity-100" : "invisible opacity-0",
+              )}
+            >
               {shoppingSessions.length === 0 && (
-                <div className="px-3 py-2 text-xs text-ink/40">暂无历史会话</div>
+                <div className="px-3 py-3 text-xs text-ink/40">
+                  暂无历史会话
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setHistoryOpen(false)}
+                      className="rounded-md border border-line px-2 py-1 text-[11px] text-ink/60 transition hover:border-primary/40 hover:text-primary"
+                    >
+                      去发起第一次咨询
+                    </button>
+                  </div>
+                </div>
               )}
               {shoppingSessions.slice(0, 8).map((session) => (
                 <button
                   key={session.session_id}
                   type="button"
-                  onClick={() => loadShoppingSession(session.session_id)}
+                  onClick={() => {
+                    setHistoryOpen(false);
+                    loadShoppingSession(session.session_id);
+                  }}
                   className="w-full rounded-lg px-3 py-2 text-left transition hover:bg-subtle"
                 >
                   <div className="truncate text-sm text-ink/80">
-                    {session.title || session.last_query || "未命名咨询"}
+                    {displayTitle(session.title, session.last_query)}
                   </div>
                   <div className="truncate text-[11px] text-ink/40">{session.last_query ?? ""}</div>
                 </button>
@@ -534,30 +588,36 @@ export default function App() {
                 >
                   {jwt ? `已登录：${username}（退出）` : "登录 / 注册"}
                 </button>
-                <div className="text-xs text-ink/50">
-                  <div className="mb-1.5 flex items-center gap-1.5 font-medium">
-                    <KeyRound className="h-3 w-3" aria-hidden="true" />
-                    访问令牌
+                {/* N11.5：访问令牌属于开发者配置，折叠进"高级设置"，普通 C 端无感知 */}
+                <details className="text-xs text-ink/50">
+                  <summary className="cursor-pointer font-medium text-ink/45 transition hover:text-ink/70">
+                    高级设置
+                  </summary>
+                  <div className="mt-2">
+                    <div className="mb-1.5 flex items-center gap-1.5 font-medium">
+                      <KeyRound className="h-3 w-3" aria-hidden="true" />
+                      访问令牌（仅特殊部署需要）
+                    </div>
+                    <div className="flex gap-1.5">
+                      <input
+                        value={tokenInput}
+                        onChange={(event) => setTokenInput(event.target.value)}
+                        placeholder={getApiToken() ? "已配置" : "粘贴 API_TOKEN"}
+                        className="min-w-0 flex-1 rounded-lg border border-line px-2.5 py-1.5 outline-none focus:border-primary/50"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setApiToken(tokenInput.trim());
+                          setSettingsOpen(false);
+                        }}
+                        className="rounded-lg bg-primary px-3 text-xs font-semibold text-white transition hover:bg-primary-dark"
+                      >
+                        保存
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex gap-1.5">
-                    <input
-                      value={tokenInput}
-                      onChange={(event) => setTokenInput(event.target.value)}
-                      placeholder={getApiToken() ? "已配置" : "粘贴 API_TOKEN"}
-                      className="min-w-0 flex-1 rounded-lg border border-line px-2.5 py-1.5 outline-none focus:border-primary/50"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setApiToken(tokenInput.trim());
-                        setSettingsOpen(false);
-                      }}
-                      className="rounded-lg bg-primary px-3 text-xs font-semibold text-white transition hover:bg-primary-dark"
-                    >
-                      保存
-                    </button>
-                  </div>
-                </div>
+                </details>
               </div>
             )}
           </div>
@@ -582,8 +642,15 @@ export default function App() {
         <>
           <main ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
             {shoppingMessages.length === 0 ? (
-              <div className="grid h-full place-items-center text-sm text-ink/40">
-                开始你的第一次咨询吧
+              <div className="grid h-full place-items-center gap-3">
+                <span className="text-sm text-ink/40">这里还没有对话</span>
+                <button
+                  type="button"
+                  onClick={newConsult}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-dark"
+                >
+                  回到首页发起咨询
+                </button>
               </div>
             ) : (
               <div className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-6 lg:px-8">
@@ -776,58 +843,63 @@ export default function App() {
             </div>
           )}
 
-          {/* 对比托盘（N4.7 加入对比） */}
-          {compareIds.length > 0 && (
-            <div className="flex shrink-0 items-center gap-2 border-t border-line bg-white px-4 py-2 lg:px-8">
-              <Scale className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-              <span className="text-xs text-ink/60">对比栏（{compareIds.length}/4）</span>
-              {compareIds.map((id, index) => {
-                const productName = productTitleById.get(id) ?? `已选商品${index + 1}`;
-                return (
-                  <span
-                    key={id}
-                    className="inline-flex max-w-44 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary"
-                  >
-                    <span className="truncate">{productName}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleCompare(id)}
-                      aria-label={`移除 ${productName}`}
-                      className="shrink-0 transition hover:text-risk"
-                    >
-                      <X className="h-2.5 w-2.5" aria-hidden="true" />
-                    </button>
-                  </span>
-                );
-              })}
-              <button
-                type="button"
-                onClick={submitCompare}
-                disabled={compareIds.length < 2 || isStreaming}
-                className="ml-auto rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                开始对比
-              </button>
-            </div>
-          )}
         </>
       )}
 
-      {/* 状态栏 + 输入区 */}
-      <div className="border-t border-line bg-white px-4 py-1.5 text-center text-xs text-ink/40">
-        {isStreaming ? `导购运行中 · 已 ${streamElapsed}s` : "就绪"}
-      </div>
-      <div ref={composerRef}>
-        <Composer
-          value={draft}
-          disabled={!canSubmit}
-          isStreaming={isStreaming}
-          onChange={setDraft}
-          onSubmit={() => void startShoppingQuery()}
-          onStop={stopQuery}
-          placeholder="描述你的购买需求，例如：想买个空气炸锅预算 500..."
-        />
-      </div>
+      {/* 状态栏 + 输入区（N11.1/3：仅对话页显示，首页只有中部搜索一个入口） */}
+      {view === "chat" && (
+        <>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-line bg-white px-4 py-1.5 text-xs text-ink/40 lg:px-8">
+            <span className="shrink-0">
+              {isStreaming ? `导购运行中 · 已 ${streamElapsed}s` : "就绪"}
+            </span>
+            {compareIds.length > 0 && (
+              <>
+                <span className="h-3 w-px bg-line" />
+                <Scale className="h-3 w-3 shrink-0 text-primary" aria-hidden="true" />
+                {compareIds.map((id, index) => {
+                  const productName = productTitleById.get(id) ?? `商品${index + 1}`;
+                  return (
+                    <span
+                      key={id}
+                      className="inline-flex max-w-36 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary"
+                    >
+                      <span className="truncate">{productName}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCompare(id)}
+                        aria-label={`移除 ${productName}`}
+                        className="shrink-0 transition hover:text-risk"
+                      >
+                        <X className="h-2.5 w-2.5" aria-hidden="true" />
+                      </button>
+                    </span>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={submitCompare}
+                  disabled={compareIds.length < 2 || isStreaming}
+                  className="ml-auto shrink-0 rounded-lg bg-primary px-3 py-1 text-[11px] font-semibold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  开始对比（{compareIds.length}/4）
+                </button>
+              </>
+            )}
+          </div>
+          <div ref={composerRef}>
+            <Composer
+              value={draft}
+              disabled={!canSubmit}
+              isStreaming={isStreaming}
+              onChange={setDraft}
+              onSubmit={() => void startShoppingQuery()}
+              onStop={stopQuery}
+              placeholder="继续描述你的需求，例如：有没有更便宜的..."
+            />
+          </div>
+        </>
+      )}
 
       {/* 悬浮操作：新咨询 / 清空（在对话视图中） */}
       {view === "chat" && shoppingMessages.length > 0 && !isStreaming && (
