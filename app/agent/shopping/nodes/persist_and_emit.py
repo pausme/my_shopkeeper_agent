@@ -30,28 +30,8 @@ async def persist_and_emit(
         if note not in summary:
             recommendation = {**recommendation, "summary": f"{note}{summary}"}
 
-    # 推荐结果：只输出 LLM 给出理由的商品（无理由=模型判定不符合需求，不应硬推）
-    ranked = state.get("ranked_products") or []
-    reasons = {
-        item.get("product_id"): item.get("reason", "")
-        for item in recommendation.get("recommendations", [])
-    }
-    recommended = [
-        {**product, "reason": reasons[product["product_id"]]}
-        for product in ranked
-        if reasons.get(product["product_id"], "").strip()
-    ]
-    # 兜底：LLM 给出理由的商品不足 3 款时（PRD 15.1：完整需求至少 3 个推荐），
-    # 用总结摘录补足头部商品，避免点名商品反被截掉
-    if len(recommended) < 3:
-        included = {p["product_id"] for p in recommended}
-        summary_text = recommendation.get("summary", "")[:80] or "综合评分与销量较高，供参考。"
-        for product in ranked:
-            if len(recommended) >= 3:
-                break
-            if product["product_id"] not in included:
-                recommended.append({**product, "reason": summary_text})
-                included.add(product["product_id"])
+    # findings #25：展示集由 generate 节点统一计算（卡与表同源），此处直接消费
+    recommended = list(state.get("display_products") or [])
 
     try:
         repository = runtime.context["shopping_session_repository"]

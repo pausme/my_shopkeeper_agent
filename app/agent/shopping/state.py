@@ -34,6 +34,7 @@ class ShoppingAgentState(TypedDict):
     insufficient_note: str  # 品型候选不足提示（findings #24），空串表示充足
 
     recommendation: dict  # 推荐结果 {summary, recommendations:[{product_id, reason}], next_question}
+    display_products: list[dict]  # 最终展示集（findings #25：推荐卡与对比表同源消费）
     comparison_table: dict  # 对比表 {headers, rows}
 
     error: str | None  # 错误信息

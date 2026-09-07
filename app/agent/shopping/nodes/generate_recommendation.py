@@ -86,9 +86,30 @@ async def generate_recommendation(
             if isinstance(item, dict) and item.get("product_id") in valid_ids
         ]
 
-        logger.info(f"推荐生成完成：{len(result['recommendations'])} 条理由")
+        # findings #25：在此统一计算最终展示集——推荐卡与对比表消费同一列表，
+        # 规则与 persist 一致：只展示有理由的商品，不足 3 款用总结摘录补足头部
+        reasons = {
+            item.get("product_id"): str(item.get("reason", "")).strip()
+            for item in result["recommendations"]
+        }
+        display = [
+            {**product, "reason": reasons[product["product_id"]]}
+            for product in ranked
+            if reasons.get(product["product_id"])
+        ]
+        if len(display) < 3:
+            included = {p["product_id"] for p in display}
+            fallback_reason = (result.get("summary", "") or "综合评分与销量较高，供参考。")[:80]
+            for product in ranked:
+                if len(display) >= 3:
+                    break
+                if product["product_id"] not in included:
+                    display.append({**product, "reason": fallback_reason})
+                    included.add(product["product_id"])
+
+        logger.info(f"推荐生成完成：{len(result['recommendations'])} 条理由，展示集 {len(display)} 款")
         writer({"type": "progress", "step": step, "status": "success"})
-        return {"recommendation": result}
+        return {"recommendation": result, "display_products": display}
     except Exception as e:
         logger.error(f"{step} failed: {e}")
         writer({"type": "progress", "step": step, "status": "error"})
