@@ -10,6 +10,7 @@ import uuid
 from fastapi import FastAPI, Request
 
 from app.api.lifespan import lifespan
+from app.api.routers.admin_router import admin_router
 from app.api.routers.auth_router import auth_router
 from app.api.routers.shopping_router import shopping_router
 from app.core.context import request_id_ctx_var
@@ -21,6 +22,8 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(auth_router)
 # AI 商品决策助手（导购）路由
 app.include_router(shopping_router)
+# 商品数据管理台路由（管理员）
+app.include_router(admin_router)
 
 
 @app.middleware("http")

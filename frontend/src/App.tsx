@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AdminConsole } from "./components/AdminConsole";
 import { AuthDialog } from "./components/AuthDialog";
 import { Composer } from "./components/Composer";
 import { ComparisonTable } from "./components/ComparisonTable";
@@ -65,6 +66,8 @@ function extractConditions(query: string): string[] {
 
 export default function App() {
   const [view, setView] = useState<"home" | "chat">("home");
+  // J3 管理台经 hash 路由挂载：#/admin
+  const isAdminRoute = window.location.hash === "#/admin";
   const [shoppingMessages, setShoppingMessages] = useState<ShoppingMessage[]>([]);
   const [shoppingSessionId, setShoppingSessionId] = useState("");
   const [shoppingClarificationCount, setShoppingClarificationCount] = useState(0);
@@ -501,6 +504,10 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
   return "导购咨询";
 }
 
+  if (isAdminRoute) {
+    return <AdminConsole />;
+  }
+
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-subtle text-ink">
       {authOpen && (
@@ -698,10 +705,18 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                 <button
                   type="button"
                   onClick={() => (jwt ? handleLogout() : setAuthOpen(true))}
-                  className="mb-3 w-full rounded-lg border border-line px-3 py-2 text-sm transition hover:border-primary/40 hover:text-primary"
+                  className="mb-2 w-full rounded-lg border border-line px-3 py-2 text-sm transition hover:border-primary/40 hover:text-primary"
                 >
                   {jwt ? `已登录：${username}（退出）` : "登录 / 注册"}
                 </button>
+                {jwt && (
+                  <a
+                    href="#/admin"
+                    className="mb-3 block w-full rounded-lg border border-line px-3 py-2 text-center text-sm text-ink/70 transition hover:border-primary/40 hover:text-primary"
+                  >
+                    商品数据管理台
+                  </a>
+                )}
                 {/* N11.5：访问令牌属于开发者配置，折叠进"高级设置"，普通 C 端无感知 */}
                 <details className="text-xs text-ink/50">
                   <summary className="cursor-pointer font-medium text-ink/45 transition hover:text-ink/70">

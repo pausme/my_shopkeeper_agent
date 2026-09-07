@@ -5,7 +5,7 @@
 风险展示都从这里取权威数据
 """
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.product import (
@@ -80,6 +80,73 @@ class ProductRepository:
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    # ---------- 管理台（J3） ----------
+
+    async def list_all(self, keyword: str = "", page: int = 1, size: int = 20) -> tuple[list, int]:
+        """管理台商品分页列表，关键词匹配标题/品牌/品类，返回 (行, 总数)"""
+
+        conditions = [ProductInfoMySQL.is_deleted == 0]
+        if keyword:
+            like = f"%{keyword}%"
+            conditions.append(
+                ProductInfoMySQL.title.like(like)
+                | ProductInfoMySQL.brand.like(like)
+                | ProductInfoMySQL.category_name.like(like)
+            )
+        total_result = await self.session.execute(
+            select(func.count()).select_from(ProductInfoMySQL).where(*conditions)
+        )
+        total = total_result.scalar() or 0
+        result = await self.session.execute(
+            select(ProductInfoMySQL)
+            .where(*conditions)
+            .order_by(ProductInfoMySQL.product_id)
+            .offset((page - 1) * size)
+            .limit(size)
+        )
+        return list(result.scalars()), total
+
+    async def update_product(self, product_id: str, fields: dict) -> ProductInfoMySQL | None:
+        """管理台部分更新商品字段（仅白名单键），返回更新后行"""
+
+        row = await self.session.get(ProductInfoMySQL, product_id)
+        if row is None or row.is_deleted:
+            return None
+        for key, value in fields.items():
+            setattr(row, key, value)
+        return row
+
+    async def soft_delete_product(self, product_id: str) -> bool:
+        """软删商品（置 is_deleted，检索层靠重建索引同步）"""
+
+        row = await self.session.get(ProductInfoMySQL, product_id)
+        if row is None or row.is_deleted:
+            return False
+        row.is_deleted = 1
+        row.status = "deleted"
+        return True
+
+    async def list_reviews(self, product_id: str, limit: int = 20) -> list:
+        """管理台查看商品评价样本"""
+
+        result = await self.session.execute(
+            select(ProductReviewMySQL)
+            .where(ProductReviewMySQL.product_id == product_id)
+            .order_by(desc(ProductReviewMySQL.created_at))
+            .limit(limit)
+        )
+        return list(result.scalars())
+
+    async def update_risk_summary(self, product_id: str, fields: dict) -> ProductRiskSummaryMySQL | None:
+        """管理台编辑风险摘要（等级/标签/适合人群等）"""
+
+        row = await self.session.get(ProductRiskSummaryMySQL, product_id)
+        if row is None:
+            return None
+        for key, value in fields.items():
+            setattr(row, key, value)
+        return row
 
     async def get_risk_summary(self, product_id: str) -> ProductRiskSummaryMySQL | None:
         """读取商品风险摘要（种子阶段预计算）"""
