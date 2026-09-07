@@ -10,6 +10,7 @@ import {
   Scale,
   Settings,
   ShoppingBag,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   X,
@@ -18,6 +19,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AuthDialog } from "./components/AuthDialog";
 import { Composer } from "./components/Composer";
 import { ComparisonTable } from "./components/ComparisonTable";
+import {
+  applyFilters,
+  EMPTY_FILTERS,
+  FilterPanel,
+  type ResultFilters,
+} from "./components/FilterPanel";
 import { ProductCard } from "./components/ProductCard";
 import { ProductDetailModal } from "./components/ProductDetailModal";
 import { ShoppingHome } from "./components/ShoppingHome";
@@ -67,6 +74,9 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
+  // N8.3 结果筛选面板
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [resultFilters, setResultFilters] = useState<ResultFilters>(EMPTY_FILTERS);
   const [tokenInput, setTokenInput] = useState("");
   const [authOpen, setAuthOpen] = useState(false);
   const [jwt, setJwtState] = useState(() => getJwt());
@@ -448,6 +458,13 @@ export default function App() {
     [lastRecommendation],
   );
   const quickFollowUps = ["有没有更便宜的", "只看评分最高的", "帮我比较前两个", "帮我总结避坑要点"];
+  // N8.3：筛选只作用于最新一次推荐的商品卡
+  const lastRecommendationId = lastRecommendation?.id;
+  const filteredProducts = useMemo(
+    () =>
+      lastRecommendation ? applyFilters(lastRecommendation.products ?? [], resultFilters) : [],
+    [lastRecommendation, resultFilters],
+  );
 
 // N11.9 过程文案用户友好化：研发术语 -> 用户视角
 const STEP_LABELS: Record<string, string> = {
@@ -811,7 +828,10 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                                   <p className="text-[15px] leading-7 text-ink">{message.content}</p>
                                   {message.products && message.products.length > 0 && (
                                     <div className="mt-3 grid gap-3 md:grid-cols-2">
-                                      {message.products.map((product) => (
+                                      {(message.id === lastRecommendationId
+                                        ? filteredProducts
+                                        : message.products
+                                      ).map((product) => (
                                         <ProductCard
                                           key={product.product_id}
                                           product={product}
@@ -857,6 +877,43 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                           )}
                         </div>
                       </div>
+
+                      {/* N8.3：最新推荐的筛选入口 + 筛尽提示 */}
+                      {message.kind === "recommendation" &&
+                        message.id === lastRecommendationId &&
+                        !isStreaming && (
+                          <div className="relative mt-2 pl-12">
+                            <button
+                              type="button"
+                              onClick={() => setFilterOpen((open) => !open)}
+                              className="inline-flex items-center gap-1 rounded-full border border-line bg-white px-3 py-1 text-xs text-ink/60 transition hover:border-primary/45 hover:text-primary"
+                            >
+                              <SlidersHorizontal className="h-3 w-3" aria-hidden="true" />
+                              筛选本次推荐
+                            </button>
+                            {filteredProducts.length === 0 && (
+                              <span className="ml-2 text-xs text-risk">
+                                当前筛选条件下没有商品，试试放宽条件或重新推荐
+                              </span>
+                            )}
+                            <FilterPanel
+                              open={filterOpen}
+                              onClose={() => setFilterOpen(false)}
+                              products={message.products ?? []}
+                              filters={resultFilters}
+                              onChange={setResultFilters}
+                              baseQuery={
+                                [...shoppingMessages.slice(0, index)]
+                                  .reverse()
+                                  .find((m) => m.role === "user")?.content ?? ""
+                              }
+                              onRequery={(query) => {
+                                setFilterOpen(false);
+                                void startShoppingQuery(query);
+                              }}
+                            />
+                          </div>
+                        )}
 
                       {/* 推荐后的快捷追问（N7.3） */}
                       {message.kind === "recommendation" &&

@@ -22,10 +22,22 @@ const DIM_SHORT: Record<string, string> = {
   不适合: "不适合",
 };
 
+// N5.3 维度分组：筛选芯片 -> 维度集合
+const DIM_GROUPS: Array<{ key: string; label: string; dims: string[] }> = [
+  { key: "all", label: "全部", dims: [] },
+  { key: "price", label: "价格", dims: ["商品", "到手价"] },
+  { key: "params", label: "参数", dims: ["商品", "关键属性"] },
+  { key: "review", label: "评价", dims: ["商品", "评分", "好评关键词"] },
+  { key: "risk", label: "风险", dims: ["商品", "风险提示", "不适合"] },
+  { key: "fit", label: "适合人群", dims: ["商品", "适合人群"] },
+];
+
 export function ComparisonTable({ headers, rows, warning, conclusion }: ComparisonTableProps) {
   const [collapsed, setCollapsed] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [dims, setDims] = useState<string[]>([]);
+  // N5.3：当前选中的维度分组（默认全部）
+  const [dimGroup, setDimGroup] = useState("all");
 
   useEffect(() => {
     const ordered = [
@@ -49,7 +61,10 @@ export function ComparisonTable({ headers, rows, warning, conclusion }: Comparis
     rows[0],
   )?.product_id;
 
-  const shownDims = expanded ? dims : dims.slice(0, collapsed ? 5 : dims.length);
+  // N5.3：分组筛选优先于展开/收起；选"全部"时维持原有展开逻辑
+  const groupDims = DIM_GROUPS.find((g) => g.key === dimGroup)?.dims ?? [];
+  const baseDims = dimGroup === "all" ? dims : dims.filter((d) => groupDims.includes(d));
+  const shownDims = expanded || dimGroup !== "all" ? baseDims : baseDims.slice(0, collapsed ? 5 : baseDims.length);
   const productName = (row: Record<string, string>, index: number) =>
     row["商品"] || `商品${index + 1}`;
 
@@ -91,6 +106,27 @@ export function ComparisonTable({ headers, rows, warning, conclusion }: Comparis
           {conclusion}
         </div>
       )}
+
+      {/* N5.3 维度分组筛选 */}
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-4 py-2">
+        {DIM_GROUPS.filter((g) => g.key === "all" || dims.some((d) => g.dims.includes(d))).map(
+          (group) => (
+            <button
+              key={group.key}
+              type="button"
+              onClick={() => setDimGroup(group.key)}
+              className={cn(
+                "rounded-full px-2.5 py-0.5 text-[11px] font-medium transition",
+                dimGroup === group.key
+                  ? "bg-primary text-white"
+                  : "bg-subtle text-ink/55 hover:text-ink",
+              )}
+            >
+              {group.label}
+            </button>
+          ),
+        )}
+      </div>
       {warning && (
         <div className="border-b border-line bg-brass/10 px-4 py-2 text-xs text-ink/70">{warning}</div>
       )}
@@ -131,7 +167,7 @@ export function ComparisonTable({ headers, rows, warning, conclusion }: Comparis
         </table>
       </div>
 
-      {dims.length > 5 && (
+      {dimGroup === "all" && dims.length > 5 && (
         <button
           type="button"
           onClick={() => {
