@@ -18,6 +18,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AdminConsole } from "./components/AdminConsole";
 import { AuthDialog } from "./components/AuthDialog";
+import { PreferenceCard, SessionSummaryCard, usePreferences } from "./components/Phase2Cards";
 import { Composer } from "./components/Composer";
 import { ComparisonTable } from "./components/ComparisonTable";
 import {
@@ -40,7 +41,7 @@ import {
   sendShoppingFeedback,
   streamShoppingQuery,
 } from "./lib/shoppingApi";
-import { getApiToken, getJwt, getUsername, setApiToken, setJwt } from "./lib/agentApiShared";
+import { API_BASE_URL, authHeaders, getApiToken, getJwt, getUsername, setApiToken, setJwt } from "./lib/agentApiShared";
 import type { RecommendedProduct, ShoppingEvent, ShoppingMessage, ShoppingSessionSummary } from "./types/shopping";
 
 function makeId() {
@@ -90,6 +91,15 @@ export default function App() {
   const [detailProduct, setDetailProduct] = useState<RecommendedProduct | null>(null);
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [sessionLoadError, setSessionLoadError] = useState("");
+  // 二期 S1：偏好中心（登录后启用）与总结卡
+  const { preferences, reload: reloadPreferences, remove: removePreference } = usePreferences(
+    Boolean(jwt),
+  );
+  const [sessionSummary, setSessionSummary] = useState<{
+    summary_text: string;
+    unresolved_questions: string[];
+    focus_products: string[];
+  } | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLDivElement | null>(null);
 
@@ -411,6 +421,13 @@ export default function App() {
         }),
       );
       setView("chat");
+      // S1-5：回访时展示上次总结（无总结静默）
+      fetch(`${API_BASE_URL}/api/shopping/sessions/${sessionId}/summary`, {
+        headers: authHeaders(),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => setSessionSummary(data ?? null))
+        .catch(() => setSessionSummary(null));
     } catch {
       setShoppingSessions((current) =>
         current.filter((session) => session.session_id !== sessionId),
@@ -428,6 +445,7 @@ export default function App() {
   const newConsult = () => {
     if (isStreaming) return;
     setShoppingMessages([]);
+    setSessionSummary(null);
     setShoppingSessionId("");
     setShoppingClarificationCount(0);
     setCompareIds([]);
@@ -787,6 +805,13 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
               </div>
             ) : (
               <div className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-6 lg:px-8">
+                {sessionSummary && (
+                  <SessionSummaryCard
+                    summary={sessionSummary}
+                    onFollowUp={(question) => void startShoppingQuery(question)}
+                    onClose={() => setSessionSummary(null)}
+                  />
+                )}
                 {shoppingMessages.map((message, index) => {
                   const isComparison = message.kind === "comparison";
                   const conclusion = isComparison
@@ -1033,6 +1058,16 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
           )}
 
         </>
+      )}
+
+      {/* S1-4 偏好卡（登录且有偏好时显示在对话内容底部） */}
+      {view === "chat" && !isStreaming && jwt && preferences.length > 0 && (
+        <div className="mx-auto w-full max-w-4xl px-4 lg:px-8">
+          <PreferenceCard
+            preferences={preferences}
+            onDelete={(key: string) => void removePreference(key)}
+          />
+        </div>
       )}
 
       {/* 状态栏 + 输入区（N11.1/3：仅对话页显示，首页只有中部搜索一个入口） */}

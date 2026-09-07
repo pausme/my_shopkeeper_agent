@@ -84,6 +84,9 @@ class ShoppingAgentService:
         self.review_es_repository = review_es_repository
         self.embedding_client = embedding_client
         self.shopping_session_repository = ShoppingSessionRepository(session)
+        from app.services.session_summary_service import SessionSummaryService
+
+        self.session_summary_service = SessionSummaryService(session)
 
     async def query(
         self,

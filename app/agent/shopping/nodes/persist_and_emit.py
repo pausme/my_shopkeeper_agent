@@ -63,6 +63,27 @@ async def persist_and_emit(
                 session_id, assistant_message_id, state.get("user_id"),
                 "recommendation_shown", {"count": len(recommended)},
             )
+
+            # 二期 S1-2：偏好信号写入（推断偏好，confidence 0.6；显式偏好由用户在偏好中心维护）
+            user_id = state.get("user_id")
+            slots = state.get("purchase_slots") or {}
+            if user_id:
+                if slots.get("category"):
+                    await repository.upsert_preference(
+                        user_id, "关注品类", str(slots["category"]),
+                        source="inferred", confidence=0.6,
+                    )
+                if slots.get("budget_max"):
+                    await repository.upsert_preference(
+                        user_id, "预算上限", f"{slots['budget_max']} 元以内",
+                        source="inferred", confidence=0.6,
+                    )
+                for preference in slots.get("preferences") or []:
+                    await repository.upsert_preference(
+                        user_id, "偏好特点", str(preference),
+                        source="inferred", confidence=0.6,
+                    )
+
             await repository.session.commit()
     except Exception as e:  # noqa: BLE001
         logger.warning(f"会话落库失败（不影响推荐输出）：{e}")

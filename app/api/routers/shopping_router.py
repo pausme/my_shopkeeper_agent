@@ -364,6 +364,39 @@ async def delete_shopping_session(
     return {"ok": True}
 
 
+# ---------- 会话总结（二期 S1-3，PRD 4.3） ----------
+
+
+@shopping_router.get("/sessions/{session_id}/summary", dependencies=[Depends(get_user_scope)])
+async def get_session_summary(
+    session_id: str,
+    service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
+    user_id: Annotated[str | None, Depends(get_user_scope)] = None,
+):
+    """读取会话总结卡；无总结返回 404"""
+
+    await _ensure_session_access(service, session_id, user_id)
+    summary = await service.session_summary_service.get(session_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="该会话还没有总结，可点击生成")
+    return summary
+
+
+@shopping_router.post("/sessions/{session_id}/summary", dependencies=[Depends(get_user_scope)])
+async def generate_session_summary(
+    session_id: str,
+    service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
+    user_id: Annotated[str | None, Depends(get_user_scope)] = None,
+):
+    """生成或刷新会话总结卡"""
+
+    await _ensure_session_access(service, session_id, user_id)
+    summary = await service.session_summary_service.generate(session_id, user_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="会话不存在或没有可总结的内容")
+    return summary
+
+
 @shopping_router.post("/compare", dependencies=[Depends(get_user_scope)])
 async def shopping_compare(
     body: CompareSchema,

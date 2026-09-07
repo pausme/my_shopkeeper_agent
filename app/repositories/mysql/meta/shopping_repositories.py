@@ -245,6 +245,88 @@ class ShoppingSessionRepository:
         )
         return result.scalar_one_or_none()
 
+    # ---------- 偏好（二期 S1-1） ----------
+
+    async def list_preferences(self, user_id: str) -> list[dict]:
+        """用户全部有效偏好（显式+推断，按更新倒序）"""
+
+        from app.models.shopping import ShoppingUserPreferenceMySQL
+
+        result = await self.session.execute(
+            select(ShoppingUserPreferenceMySQL)
+            .where(
+                ShoppingUserPreferenceMySQL.user_id == user_id,
+                ShoppingUserPreferenceMySQL.is_deleted == 0,
+            )
+            .order_by(desc(ShoppingUserPreferenceMySQL.updated_at))
+        )
+        return [
+            {
+                "preference_key": row.preference_key,
+                "preference_value": row.preference_value,
+                "confidence": float(row.confidence) if row.confidence else None,
+                "source": row.source,
+                "updated_at": int(row.updated_at.timestamp() * 1000)
+                if row.updated_at
+                else None,
+            }
+            for row in result.scalars()
+        ]
+
+    async def upsert_preference(
+        self,
+        user_id: str,
+        preference_key: str,
+        preference_value: str,
+        source: str = "explicit",
+        confidence: float | None = None,
+    ) -> None:
+        """新增或更新单条偏好（同 user+key 覆盖值并刷新来源）"""
+
+        from app.models.shopping import ShoppingUserPreferenceMySQL
+
+        result = await self.session.execute(
+            select(ShoppingUserPreferenceMySQL).where(
+                ShoppingUserPreferenceMySQL.user_id == user_id,
+                ShoppingUserPreferenceMySQL.preference_key == preference_key,
+                ShoppingUserPreferenceMySQL.is_deleted == 0,
+            )
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            self.session.add(
+                ShoppingUserPreferenceMySQL(
+                    user_id=user_id,
+                    preference_key=preference_key,
+                    preference_value=preference_value,
+                    confidence=confidence,
+                    source=source,
+                )
+            )
+        else:
+            row.preference_value = preference_value
+            row.source = source
+            if confidence is not None:
+                row.confidence = confidence
+
+    async def delete_preference(self, user_id: str, preference_key: str) -> bool:
+        """软删单条偏好；返回是否确实删除"""
+
+        from app.models.shopping import ShoppingUserPreferenceMySQL
+
+        result = await self.session.execute(
+            select(ShoppingUserPreferenceMySQL).where(
+                ShoppingUserPreferenceMySQL.user_id == user_id,
+                ShoppingUserPreferenceMySQL.preference_key == preference_key,
+                ShoppingUserPreferenceMySQL.is_deleted == 0,
+            )
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return False
+        row.is_deleted = 1
+        return True
+
     # ---------- 反馈 ----------
 
     async def save_event(

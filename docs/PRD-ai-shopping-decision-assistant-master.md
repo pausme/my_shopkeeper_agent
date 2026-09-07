@@ -102,7 +102,12 @@ AI 导购具备明确的实际价值，但用户信任需要通过“可解释�
 
 ### 7.2 二期范围
 
-价格监控与降价提醒、用户偏好记忆、图文评价摘要、搭配购买方案、购物车和优惠券计算、已购商品联动推荐。
+二期已拆分为独立文档，建议直接阅读：
+
+1. [二期 PRD](PRD-ai-shopping-decision-assistant-phase2.md)
+2. [二期需求开发文档](PRD-ai-shopping-decision-assistant-phase2-dev.md)
+
+二期主线聚焦持续购物能力：偏好记忆、商品关注与降价提醒、会话总结复访、搭配购买和已购联动。桌面 Web 优先，本期不做移动端。
 
 ### 7.3 暂不做
 
@@ -303,4 +308,3 @@ AI 导购具备明确的实际价值，但用户信任需要通过“可解释�
 ## 附录 C：Agent / 工具改造方案
 
 见 [Agent 改造文档](PRD-ai-shopping-decision-assistant-agent-plan.md)。
-

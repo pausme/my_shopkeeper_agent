@@ -6,6 +6,7 @@ shopping_feedback 用户反馈 / shopping_event_log 查询埋点
 """
 
 from sqlalchemy import JSON, BigInteger, DateTime, Index, String, Text, func
+from sqlalchemy.dialects.mysql import DECIMAL
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -99,6 +100,44 @@ class ShoppingFeedbackMySQL(Base):
         DateTime, server_default=func.now(), comment="创建时间"
     )
     is_deleted: Mapped[int] = mapped_column(default=0, comment="逻辑删除")
+
+
+class ShoppingUserPreferenceMySQL(Base):
+    """用户偏好表（二期 S1）"""
+
+    __tablename__ = "shopping_user_preference"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, comment="用户 ID")
+    preference_key: Mapped[str] = mapped_column(String(64), nullable=False, comment="偏好项")
+    preference_value: Mapped[str] = mapped_column(String(255), nullable=False, comment="偏好值")
+    confidence: Mapped[object | None] = mapped_column(DECIMAL(3, 2), comment="置信度")
+    source: Mapped[str | None] = mapped_column(String(32), comment="explicit / inferred")
+    updated_at: Mapped[object] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间"
+    )
+    is_deleted: Mapped[int] = mapped_column(default=0, comment="逻辑删除")
+
+    __table_args__ = (
+        Index("uk_user_pref", "user_id", "preference_key"),
+    )
+
+
+class ShoppingSessionSummaryMySQL(Base):
+    """会话总结表（二期 S1-3，可重建）"""
+
+    __tablename__ = "shopping_session_summary"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    summary_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    session_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    user_id: Mapped[str | None] = mapped_column(String(64), comment="用户 ID")
+    summary_text: Mapped[str] = mapped_column(Text, nullable=False, comment="会话摘要")
+    unresolved_questions_json: Mapped[list | None] = mapped_column(JSON, comment="未决问题")
+    focus_products_json: Mapped[list | None] = mapped_column(JSON, comment="关注商品")
+    created_at: Mapped[object] = mapped_column(
+        DateTime, server_default=func.now(), comment="创建时间"
+    )
 
 
 class ShoppingEventLogMySQL(Base):
