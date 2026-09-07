@@ -122,8 +122,10 @@ async def patch_product(
     row = await ProductRepository(session).update_product(product_id, fields)
     if row is None:
         raise HTTPException(status_code=404, detail="商品不存在")
+    # commit 会 expire 属性，之后访问 updated_at 触发同步 IO 抛 MissingGreenlet——先序列化
+    result = _product_dict(row)
     await session.commit()
-    return {"ok": True, "product": _product_dict(row)}
+    return {"ok": True, "product": result}
 
 
 @admin_router.delete("/products/{product_id}")
