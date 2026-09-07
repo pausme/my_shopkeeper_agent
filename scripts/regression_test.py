@@ -50,15 +50,18 @@ def request_json(method: str, path: str, body: dict | None = None, headers: dict
             return error.code, {}
 
 
-def post_sse(payload: dict) -> list[dict]:
+def post_sse(payload: dict, jwt: str = "") -> list[dict]:
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "X-API-Token": TOKEN,
+    }
+    if jwt:
+        headers["Authorization"] = f"Bearer {jwt}"
     req = urllib.request.Request(
         f"{HOST}/api/shopping/query",
         data=json.dumps(payload).encode(),
-        headers={
-            "Content-Type": "application/json",
-            "Accept": "text/event-stream",
-            "X-API-Token": TOKEN,
-        },
+        headers=headers,
         method="POST",
     )
     events = []
@@ -114,7 +117,8 @@ def main() -> None:
                 "query": "想买个空气炸锅，两个人用" if rnd == 0 else "跳过",
                 "history": history,
                 **({"session_id": session_id} if session_id else {}),
-            }
+            },
+            jwt=jwt_a,
         )
         recommendation = next((e for e in events if e.get("type") == "recommendation"), None)
         if recommendation:

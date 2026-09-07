@@ -44,6 +44,9 @@ async def decide_clarification(
     has_history = bool(state.get("history"))
     asked = state.get("clarification_count", 0)
     category = slots.get("category")
+    # 显式选品判定合并两层：LLM 槽位 + 请求体 selected_product_ids
+    # （LLM 偶发漏映射时，对比/点名请求也不应被品类追问打断）
+    explicit_ids = slots.get("product_ids") or state.get("selected_product_ids")
 
     # 品类关键词支持判定：用户原话与改写文本都不含品类词时，
     # 视为品类缺失（LLM 猜测的品类不可作为跳过追问的依据）
@@ -56,7 +59,7 @@ async def decide_clarification(
     if (
         asked < MAX_CLARIFICATION
         and not has_history
-        and not slots.get("product_ids")
+        and not explicit_ids
     ):
         if not keyword_supported:
             question = CATEGORY_QUESTION
