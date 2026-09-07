@@ -387,6 +387,7 @@ export default function App() {
       );
       setShoppingSessionId(sessionId);
       setShoppingClarificationCount(0);
+      setCompareIds([]);
       setShoppingMessages(
         detail.messages.map((row) => {
           const rowWithHydration = row as {
@@ -416,6 +417,7 @@ export default function App() {
       );
       setSessionLoadError("该会话不属于当前账号或已删除");
       setHistoryError("该会话不属于当前账号或已删除");
+      setCompareIds([]);
       window.setTimeout(() => setHistoryError(""), 3000);
       setView("home");
     } finally {
@@ -931,6 +933,14 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                                   headers={message.comparison.headers}
                                   rows={message.comparison.rows}
                                   conclusion={conclusion}
+                                  onDimGroupChange={(group) => {
+                                    if (!shoppingSessionId) return;
+                                    sendShoppingEvent({
+                                      session_id: shoppingSessionId,
+                                      event_type: "compare_open",
+                                      event_data: { action: "dim_group", group },
+                                    });
+                                  }}
                                 />
                               )}
                             </div>
@@ -962,6 +972,14 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                               products={message.products ?? []}
                               filters={resultFilters}
                               onChange={setResultFilters}
+                              onTrack={(action, data) => {
+                                if (!shoppingSessionId) return;
+                                sendShoppingEvent({
+                                  session_id: shoppingSessionId,
+                                  event_type: "compare_open",
+                                  event_data: { action, ...data },
+                                });
+                              }}
                               baseQuery={
                                 [...shoppingMessages.slice(0, index)]
                                   .reverse()

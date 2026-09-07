@@ -5,6 +5,8 @@
 理由强制锚定给定事实字段（价格/评分/销量/评价/风险），禁止编造（M8 幻觉兜底）
 """
 
+import re
+
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import PromptTemplate
 from langgraph.runtime import Runtime
@@ -15,6 +17,20 @@ from app.agent.shopping.context import ShoppingAgentContext
 from app.agent.shopping.state import ShoppingAgentState
 from app.core.log import logger
 from app.prompt.prompt_loader import load_prompt
+
+GENERIC_PRODUCT_ID_PATTERN = re.compile(r"(?<![A-Za-z0-9_])P\d{3,}(?![A-Za-z0-9_])")
+
+
+def sanitize_visible_text(text: object, product_ids: set[str] | None = None) -> str:
+    """移除用户可见文案中的内部商品编号，保留接口结构里的 product_id。"""
+
+    cleaned = str(text or "")
+    for product_id in sorted(product_ids or set(), key=len, reverse=True):
+        cleaned = cleaned.replace(product_id, "")
+    cleaned = GENERIC_PRODUCT_ID_PATTERN.sub("", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    cleaned = re.sub(r"（\s*）|\(\s*\)", "", cleaned)
+    return cleaned.strip()
 
 
 async def generate_recommendation(
@@ -78,10 +94,18 @@ async def generate_recommendation(
         if not isinstance(result, dict) or "recommendations" not in result:
             raise ValueError(f"推荐输出结构异常：{str(result)[:120]}")
 
-        # 兜底清洗：只保留合法 product_id，防止模型引用不在候选中的商品
+        # 兜底清洗：只保留合法 product_id，防止模型引用不在候选中的商品；
+        # 同时清理 summary / reason / next_question 中误写入的内部编号（F-REG-003）
         valid_ids = {product["product_id"] for product in ranked}
+        result["summary"] = sanitize_visible_text(result.get("summary", ""), valid_ids)
+        result["next_question"] = sanitize_visible_text(
+            result.get("next_question", ""), valid_ids
+        )
         result["recommendations"] = [
-            item
+            {
+                **item,
+                "reason": sanitize_visible_text(item.get("reason", ""), valid_ids),
+            }
             for item in result.get("recommendations", [])
             if isinstance(item, dict) and item.get("product_id") in valid_ids
         ]

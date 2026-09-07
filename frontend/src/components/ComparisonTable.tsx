@@ -12,6 +12,8 @@ type ComparisonTableProps = {
   rows: Array<Record<string, string>>;
   warning?: string;
   conclusion?: string;
+  /** N10.3：维度组切换回调（埋点用），未传不影响功能 */
+  onDimGroupChange?: (group: string) => void;
 };
 
 // 维度展示顺序与简称（未列出的维度排在其后）
@@ -32,7 +34,7 @@ const DIM_GROUPS: Array<{ key: string; label: string; dims: string[] }> = [
   { key: "fit", label: "适合人群", dims: ["商品", "适合人群"] },
 ];
 
-export function ComparisonTable({ headers, rows, warning, conclusion }: ComparisonTableProps) {
+export function ComparisonTable({ headers, rows, warning, conclusion, onDimGroupChange }: ComparisonTableProps) {
   const [collapsed, setCollapsed] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [dims, setDims] = useState<string[]>([]);
@@ -114,7 +116,10 @@ export function ComparisonTable({ headers, rows, warning, conclusion }: Comparis
             <button
               key={group.key}
               type="button"
-              onClick={() => setDimGroup(group.key)}
+              onClick={() => {
+                setDimGroup(group.key);
+                onDimGroupChange?.(group.key);
+              }}
               className={cn(
                 "rounded-full px-2.5 py-0.5 text-[11px] font-medium transition",
                 dimGroup === group.key

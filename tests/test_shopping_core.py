@@ -24,6 +24,15 @@ def test_shopping_graph_compiles():
     assert "generate_recommendation" in nodes
 
 
+def test_visible_recommendation_text_strips_internal_ids():
+    from app.agent.shopping.nodes.generate_recommendation import sanitize_visible_text
+
+    text = sanitize_visible_text("摩飞空气炸锅P0005在500元内，推荐P0005款", {"P0005"})
+    assert "P0005" not in text
+    assert "空气炸锅" in text
+    assert "500元内" in text
+
+
 def test_shopping_eval_dataset_valid():
     """评测集结构完整：id 唯一、必填字段齐全、品类合法"""
 

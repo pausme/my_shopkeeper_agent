@@ -59,6 +59,8 @@ type FilterPanelProps = {
   onChange: (filters: ResultFilters) => void;
   onRequery: (query: string) => void;
   baseQuery: string;
+  /** N10.3 埋点回调（App 提供真实 session），未传时静默 */
+  onTrack?: (action: string, data: Record<string, string>) => void;
 };
 
 export function FilterPanel({
@@ -69,6 +71,7 @@ export function FilterPanel({
   onChange,
   onRequery,
   baseQuery,
+  onTrack,
 }: FilterPanelProps) {
   if (!open) return null;
 
@@ -202,7 +205,16 @@ export function FilterPanel({
         </button>
         <button
           type="button"
-          onClick={() => onRequery(filtersToQuery(filters, baseQuery))}
+          onClick={() => {
+            const dims: Record<string, string> = {};
+            if (filters.budgetMax != null) dims.budget = String(filters.budgetMax);
+            if (filters.excludedBrands.length) dims.brands = filters.excludedBrands.join(",");
+            if (filters.minRating > 0) dims.rating = String(filters.minRating);
+            if (filters.inStockOnly) dims.stock = "1";
+            if (filters.excludeRisky) dims.risk = "1";
+            onTrack?.("filter_requery", dims);
+            onRequery(filtersToQuery(filters, baseQuery));
+          }}
           disabled={filters.budgetMax == null && filters.excludedBrands.length === 0 && filters.minRating === 0 && !filters.inStockOnly && !filters.excludeRisky}
           className="flex-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
         >
