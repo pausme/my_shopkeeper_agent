@@ -109,5 +109,6 @@ def _row_to_candidate(row, semantic_score: float) -> dict:
         "rating": float(row.rating),
         "review_count": row.review_count,
         "attributes": row.attributes_json or {},
+        "image_url": row.image_url,
         "semantic_score": round(float(semantic_score), 4),
     }

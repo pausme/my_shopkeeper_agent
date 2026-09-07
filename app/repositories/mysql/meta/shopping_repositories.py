@@ -27,13 +27,16 @@ def new_id(prefix: str) -> str:
 
 
 def _sanitize_title(title: str | None) -> str:
-    """会话标题治理（N11.6）：过短或纯数字的输入（如"1""跳过"）兜底为日期式标题"""
+    """会话标题治理（N11.6）：过短/纯数字/跳过类输入兜底为"品类·日期"式标题"""
 
     from datetime import datetime
 
+    from app.agent.shopping.category_match import guess_category
+
     cleaned = (title or "").strip()
     if len(cleaned) < 4 or cleaned.isdigit() or cleaned in ("跳过", "不确定", "不知道"):
-        return f"导购咨询 {datetime.now().strftime('%m-%d %H:%M')}"
+        category = guess_category(cleaned) or "商品"
+        return f"{category}咨询 · {datetime.now().strftime('%m-%d %H:%M')}"
     return cleaned[:255]
 
 

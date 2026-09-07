@@ -29,6 +29,7 @@ export type RecommendedProduct = {
   sales_30d: number | null;
   review_count?: number | null;
   attributes: Record<string, string>;
+  image_url?: string | null;
   semantic_score?: number;
   reason: string;
   /** 推荐结论：最推荐 / 预算优先 / 品质优先 / 谨慎购买（PRD 10.5） */

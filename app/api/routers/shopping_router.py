@@ -259,6 +259,7 @@ async def shopping_session_detail(
                 "sales_30d": row.sales_30d,
                 "review_count": row.review_count,
                 "attributes": row.attributes_json or {},
+                "image_url": row.image_url,
                 "reason": reasons.get(row.product_id, ""),
             }
             for row in rows

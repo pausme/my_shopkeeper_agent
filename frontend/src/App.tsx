@@ -11,6 +11,7 @@ import {
   Settings,
   ShoppingBag,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -23,6 +24,7 @@ import { ShoppingHome } from "./components/ShoppingHome";
 import { SkeletonCards } from "./components/SkeletonCards";
 import { cn } from "./lib/format";
 import {
+  deleteShoppingSessionRemote,
   fetchShoppingSessionDetail,
   fetchShoppingSessions,
   sendShoppingEvent,
@@ -64,6 +66,7 @@ export default function App() {
   const [streamStartedAt, setStreamStartedAt] = useState<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
   const [tokenInput, setTokenInput] = useState("");
   const [authOpen, setAuthOpen] = useState(false);
   const [jwt, setJwtState] = useState(() => getJwt());
@@ -338,6 +341,21 @@ export default function App() {
   };
 
   const [loadedSessionTitle, setLoadedSessionTitle] = useState("");
+  // N11.7：历史项删除（属主校验由后端保证，匿名会话仅共享令牌持有者可删）
+  const handleDeleteSession = async (sessionId: string) => {
+    try {
+      await deleteShoppingSessionRemote(sessionId);
+      setShoppingSessions((current) => current.filter((s) => s.session_id !== sessionId));
+      if (sessionId === shoppingSessionId) {
+        setShoppingSessionId("");
+        setShoppingMessages([]);
+        setLoadedSessionTitle("");
+      }
+    } catch {
+      // 删除失败静默（无权限/已删除）
+    }
+  };
+
   const loadShoppingSession = async (sessionId: string) => {
     if (isStreaming) return;
     try {
@@ -525,36 +543,72 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                 historyOpen ? "visible opacity-100" : "invisible opacity-0",
               )}
             >
-              {shoppingSessions.length === 0 && (
-                <div className="px-3 py-3 text-xs text-ink/40">
-                  暂无历史会话
-                  <div className="mt-2">
+              {shoppingSessions.length > 3 && (
+                <input
+                  value={historySearch}
+                  onChange={(event) => setHistorySearch(event.target.value)}
+                  placeholder="搜索历史会话..."
+                  className="mb-1.5 w-full rounded-lg border border-line px-2.5 py-1.5 text-xs outline-none focus:border-primary/50"
+                />
+              )}
+              {(() => {
+                const keyword = historySearch.trim();
+                const filtered = keyword
+                  ? shoppingSessions.filter(
+                      (s) =>
+                        (s.title ?? "").includes(keyword) ||
+                        (s.last_query ?? "").includes(keyword),
+                    )
+                  : shoppingSessions;
+                if (filtered.length === 0) {
+                  return (
+                    <div className="px-3 py-3 text-xs text-ink/40">
+                      {shoppingSessions.length === 0 ? "暂无历史会话" : "没有匹配的会话"}
+                      {shoppingSessions.length === 0 && (
+                        <div className="mt-2">
+                          <button
+                            type="button"
+                            onClick={() => setHistoryOpen(false)}
+                            className="rounded-md border border-line px-2 py-1 text-[11px] text-ink/60 transition hover:border-primary/40 hover:text-primary"
+                          >
+                            去发起第一次咨询
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+                return filtered.slice(0, 10).map((session) => (
+                  <div
+                    key={session.session_id}
+                    className="group/item flex items-center gap-1 rounded-lg px-2 transition hover:bg-subtle"
+                  >
                     <button
                       type="button"
-                      onClick={() => setHistoryOpen(false)}
-                      className="rounded-md border border-line px-2 py-1 text-[11px] text-ink/60 transition hover:border-primary/40 hover:text-primary"
+                      onClick={() => {
+                        setHistoryOpen(false);
+                        loadShoppingSession(session.session_id);
+                      }}
+                      className="min-w-0 flex-1 py-2 text-left"
                     >
-                      去发起第一次咨询
+                      <div className="truncate text-sm text-ink/80">
+                        {displayTitle(session.title, session.last_query)}
+                      </div>
+                      <div className="truncate text-[11px] text-ink/40">
+                        {session.last_query ?? ""}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteSession(session.session_id)}
+                      aria-label="删除该会话"
+                      className="shrink-0 rounded-md p-1.5 text-ink/30 opacity-0 transition hover:bg-risk/10 hover:text-risk group-hover/item:opacity-100"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                     </button>
                   </div>
-                </div>
-              )}
-              {shoppingSessions.slice(0, 8).map((session) => (
-                <button
-                  key={session.session_id}
-                  type="button"
-                  onClick={() => {
-                    setHistoryOpen(false);
-                    loadShoppingSession(session.session_id);
-                  }}
-                  className="w-full rounded-lg px-3 py-2 text-left transition hover:bg-subtle"
-                >
-                  <div className="truncate text-sm text-ink/80">
-                    {displayTitle(session.title, session.last_query)}
-                  </div>
-                  <div className="truncate text-[11px] text-ink/40">{session.last_query ?? ""}</div>
-                </button>
-              ))}
+                ));
+              })()}
             </div>
           </div>
 

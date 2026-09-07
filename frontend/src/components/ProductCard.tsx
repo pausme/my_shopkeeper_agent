@@ -224,9 +224,20 @@ function FeedbackInline({ onFeedback }: { onFeedback: (type: string) => void }) 
 
   if (done) {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-good">
+      // N11.12：反馈成功说明用途 + 可撤销重选
+      <span className="inline-flex items-center gap-1.5 text-[11px] text-good">
         <Check className="h-3 w-3" aria-hidden="true" />
         已记录，会帮推荐更准
+        <button
+          type="button"
+          onClick={() => {
+            setDone(false);
+            setOpen(false);
+          }}
+          className="text-ink/40 underline-offset-2 transition hover:text-ink hover:underline"
+        >
+          撤销
+        </button>
       </span>
     );
   }

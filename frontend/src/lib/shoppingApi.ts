@@ -151,6 +151,10 @@ export function fetchProductSummary(productId: string): Promise<ProductSummary> 
   return requestJson(`/api/shopping/products/${productId}/summary`);
 }
 
+export function deleteShoppingSessionRemote(sessionId: string): Promise<{ ok: boolean }> {
+  return requestJson(`/api/shopping/sessions/${sessionId}`, { method: "DELETE" });
+}
+
 export function sendShoppingFeedback(payload: {
   session_id: string;
   message_id?: string;

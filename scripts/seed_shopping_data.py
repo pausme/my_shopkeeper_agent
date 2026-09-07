@@ -175,10 +175,58 @@ def build_products() -> list[ProductInfoMySQL]:
                     detail_text=item["title"] + "；" + "；".join(
                         f"{k}：{v}" for k, v in item["attrs"].items()
                     ),
+                    image_url=f"/products/P{len(products) + 1:04d}.svg",
                     is_deleted=0,
                 )
             )
+    write_product_svgs(products)
     return products
+
+
+# 品类主色（SVG 生成用，与前端品牌色系一致）
+CATEGORY_COLORS = {
+    "厨房小电器": ("#fff7ed", "#fdba74"),
+    "家居生活": ("#f0fdf4", "#86efac"),
+    "数码配件": ("#eff6ff", "#93c5fd"),
+    "母婴用品": ("#fdf2f8", "#f9a8d4"),
+}
+
+
+def write_product_svgs(products: list[ProductInfoMySQL]) -> None:
+    """为每款商品生成专属 SVG 主图（N11.10：自托管、无外部依赖、不虚构照片）
+
+    写入 frontend/public/products/{product_id}.svg，构建时随 dist 发布
+    """
+
+    out_dir = Path(__file__).parents[1] / "frontend" / "public" / "products"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for product in products:
+        bg, accent = CATEGORY_COLORS.get(product.category_name, ("#f8fafc", "#cbd5e1"))
+        # 标题换行：每 9 个字符一行，最多 3 行
+        title = product.title or product.product_id
+        lines = [title[i : i + 9] for i in range(0, min(len(title), 27), 9)]
+        tspans = "".join(
+            f'<tspan x="40" dy="{34 if i == 0 else 22}">{line}</tspan>'
+            for i, line in enumerate(lines)
+        )
+        svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="{bg}"/>
+      <stop offset="1" stop-color="{accent}"/>
+    </linearGradient>
+  </defs>
+  <rect width="480" height="480" rx="36" fill="url(#g)"/>
+  <rect x="28" y="28" width="424" height="424" rx="24" fill="none" stroke="{accent}" stroke-width="2" opacity="0.6"/>
+  <path d="M150 130 h180 l22 240 h-224 z" fill="none" stroke="#64748b" stroke-width="10" stroke-linejoin="round" opacity="0.55"/>
+  <path d="M205 130 v-26 a35 35 0 0 1 70 0 v26" fill="none" stroke="#64748b" stroke-width="10" stroke-linecap="round" opacity="0.55"/>
+  <text x="40" y="240" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="600" fill="#1e293b">{tspans}</text>
+  <text x="40" y="330" font-family="PingFang SC, sans-serif" font-size="20" fill="#475569">{product.brand or ""}</text>
+  <text x="40" y="380" font-family="PingFang SC, sans-serif" font-size="24" font-weight="700" fill="#ea580c">¥{float(product.promotion_price or product.price)}</text>
+  <text x="440" y="446" text-anchor="end" font-family="PingFang SC, sans-serif" font-size="16" fill="#94a3b8">{product.category_name}</text>
+</svg>"""
+        (out_dir / f"{product.product_id}.svg").write_text(svg, encoding="utf-8")
+    print(f"商品主图 SVG 已生成：{len(products)} 款 -> {out_dir}")
 
 
 def build_reviews(products: list[ProductInfoMySQL]) -> list[ProductReviewMySQL]:
