@@ -10,9 +10,12 @@ import type { RecommendedProduct } from "../types/shopping";
 type ProductDetailModalProps = {
   product: RecommendedProduct | null;
   onClose: () => void;
+  /** findings #21：详情页决策下一步 */
+  onCompare?: (productId: string) => void;
+  onAsk?: (productId: string, title: string) => void;
 };
 
-export function ProductDetailModal({ product, onClose }: ProductDetailModalProps) {
+export function ProductDetailModal({ product, onClose, onCompare, onAsk }: ProductDetailModalProps) {
   const [summary, setSummary] = useState<ProductSummary | null>(null);
   const [error, setError] = useState("");
 
@@ -24,6 +27,15 @@ export function ProductDetailModal({ product, onClose }: ProductDetailModalProps
       .then(setSummary)
       .catch((err) => setError(err instanceof Error ? err.message : "加载失败"));
   }, [product]);
+
+  // findings #23：Esc 关闭
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   if (!product) return null;
 
@@ -50,14 +62,16 @@ export function ProductDetailModal({ product, onClose }: ProductDetailModalProps
               {product.brand && <span>{product.brand}</span>}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full p-1.5 text-ink/45 transition hover:bg-subtle hover:text-ink"
-            aria-label="关闭"
-          >
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="self-end rounded-full p-1.5 text-ink/45 transition hover:bg-subtle hover:text-ink"
+              aria-label="关闭"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -135,6 +149,38 @@ export function ProductDetailModal({ product, onClose }: ProductDetailModalProps
             </div>
           </div>
         )}
+        {/* findings #21：决策下一步——不必关弹窗再回卡片操作 */}
+        <div className="mt-5 flex flex-wrap gap-2 border-t border-line pt-4">
+          <button
+            type="button"
+            onClick={() => onCompare?.(product.product_id)}
+            className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-dark"
+          >
+            加入对比
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onAsk?.(product.product_id, product.title);
+              onClose();
+            }}
+            className="rounded-md border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/5"
+          >
+            继续追问这款
+          </button>
+          <button
+            type="button"
+            onClick={() => navigator.clipboard?.writeText(product.title)}
+            className="rounded-md border border-line px-3 py-1.5 text-xs text-ink/60 transition hover:border-primary/40 hover:text-primary"
+          >
+            复制名称
+          </button>
+          {summary && summary.review_count != null && (
+            <span className="ml-auto self-center text-[11px] text-ink/40">
+              演示数据 · 样本 {summary.review_count} 条
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

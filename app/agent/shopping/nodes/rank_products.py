@@ -10,6 +10,7 @@ import time
 
 from langgraph.runtime import Runtime
 
+from app.agent.shopping.category_match import match_product_type
 from app.agent.shopping.context import ShoppingAgentContext
 from app.agent.shopping.state import ShoppingAgentState
 from app.conf.app_config import app_config
@@ -67,6 +68,32 @@ async def rank_products(
         if not candidates:
             writer({"type": "progress", "step": step, "status": "success"})
             return {"ranked_products": []}
+
+        # 品型硬约束（findings #24）：用户点名具体品型（如"空气炸锅"）时，
+        # 只保留标题/属性命中该品型的商品，宁缺毋滥——绝不用相邻品类凑数
+        type_keyword = match_product_type(
+            state.get("query"), state.get("rewritten_query")
+        )
+        insufficient_note = ""
+        if type_keyword:
+            type_matched = [
+                c
+                for c in candidates
+                if type_keyword in (c.get("title") or "")
+                or type_keyword in str(c.get("attributes") or {})
+            ]
+            if type_matched:
+                candidates = type_matched
+                if len(type_matched) < 3:
+                    insufficient_note = (
+                        f"同品类候选不足：目前符合「{type_keyword}」的商品只有 "
+                        f"{len(type_matched)} 款，已如实推荐，未用相近品类凑数。"
+                    )
+                    logger.info(f"品型约束：{type_keyword} 仅 {len(type_matched)} 款候选")
+            else:
+                insufficient_note = (
+                    f"暂无「{type_keyword}」类商品，以下为最接近的同类推荐，供参考。"
+                )
 
         # 排除条件程序化执行（PRD 10.1）：品牌精确匹配或标题包含排除词的商品直接剔除
         if exclusions:
@@ -144,7 +171,7 @@ async def rank_products(
         logger.info(f"排序完成：{len(candidates)} -> {len(ranked_products)}，耗时 {time.monotonic() - started:.2f}s，"
                     f"头部：{[(c['product_id'], c['verdict']) for c in ranked_products[:3]]}")
         writer({"type": "progress", "step": step, "status": "success"})
-        return {"ranked_products": ranked_products}
+        return {"ranked_products": ranked_products, "insufficient_note": insufficient_note}
     except Exception as e:
         logger.error(f"{step} failed: {e}")
         writer({"type": "progress", "step": step, "status": "error"})

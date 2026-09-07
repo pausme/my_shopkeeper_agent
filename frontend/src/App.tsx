@@ -74,6 +74,8 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
+  const [historyError, setHistoryError] = useState("");
+  const [loadingSessionId, setLoadingSessionId] = useState("");
   // N8.3 结果筛选面板
   const [filterOpen, setFilterOpen] = useState(false);
   const [resultFilters, setResultFilters] = useState<ResultFilters>(EMPTY_FILTERS);
@@ -353,6 +355,8 @@ export default function App() {
   const [loadedSessionTitle, setLoadedSessionTitle] = useState("");
   // N11.7：历史项删除（属主校验由后端保证，匿名会话仅共享令牌持有者可删）
   const handleDeleteSession = async (sessionId: string) => {
+    // findings #20：删除需确认，失败给出提示
+    if (!window.confirm("确定删除这条咨询记录吗？删除后不可恢复。")) return;
     try {
       await deleteShoppingSessionRemote(sessionId);
       setShoppingSessions((current) => current.filter((s) => s.session_id !== sessionId));
@@ -362,12 +366,14 @@ export default function App() {
         setLoadedSessionTitle("");
       }
     } catch {
-      // 删除失败静默（无权限/已删除）
+      setHistoryError("删除失败：可能无权限或会话已不存在");
+      window.setTimeout(() => setHistoryError(""), 3000);
     }
   };
 
   const loadShoppingSession = async (sessionId: string) => {
     if (isStreaming) return;
+    setLoadingSessionId(sessionId);
     try {
       const detail = await fetchShoppingSessionDetail(sessionId);
       setLoadedSessionTitle(
@@ -405,7 +411,11 @@ export default function App() {
         current.filter((session) => session.session_id !== sessionId),
       );
       setSessionLoadError("该会话不属于当前账号或已删除");
+      setHistoryError("该会话不属于当前账号或已删除");
+      window.setTimeout(() => setHistoryError(""), 3000);
       setView("home");
+    } finally {
+      setLoadingSessionId("");
     }
   };
 
@@ -492,7 +502,15 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
         <AuthDialog onClose={() => setAuthOpen(false)} onAuthed={handleAuthed} />
       )}
       {detailProduct && (
-        <ProductDetailModal product={detailProduct} onClose={() => setDetailProduct(null)} />
+        <ProductDetailModal
+          product={detailProduct}
+          onClose={() => setDetailProduct(null)}
+          onCompare={handleCompare}
+          onAsk={(productId, title) => {
+            const question = `${title}值不值得买？帮我分析下`;
+            void startShoppingQuery(question);
+          }}
+        />
       )}
 
       {/* 顶部导航（N8.2） */}
@@ -560,6 +578,11 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                 historyOpen ? "visible opacity-100" : "invisible opacity-0",
               )}
             >
+              {historyError && (
+                <div className="mb-1.5 rounded-lg bg-risk/8 px-2.5 py-1.5 text-[11px] text-risk">
+                  {historyError}
+                </div>
+              )}
               {shoppingSessions.length > 3 && (
                 <input
                   value={historySearch}
@@ -606,13 +629,16 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                         setHistoryOpen(false);
                         loadShoppingSession(session.session_id);
                       }}
-                      className="min-w-0 flex-1 py-2 text-left"
+                      disabled={loadingSessionId === session.session_id}
+                      className="min-w-0 flex-1 py-2 text-left disabled:opacity-50"
                     >
                       <div className="truncate text-sm text-ink/80">
                         {displayTitle(session.title, session.last_query)}
                       </div>
                       <div className="truncate text-[11px] text-ink/40">
-                        {session.last_query ?? ""}
+                        {loadingSessionId === session.session_id
+                          ? "加载中..."
+                          : (session.last_query ?? "")}
                       </div>
                     </button>
                     <button

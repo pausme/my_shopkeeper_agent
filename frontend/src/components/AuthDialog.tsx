@@ -2,7 +2,7 @@
  * 登录/注册对话框组件
  * 简单的用户名密码认证；登录态由 JWT 维持，存于 localStorage
  */
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { LogIn, UserPlus, X } from "lucide-react";
 import { login, register } from "../lib/authApi";
 
@@ -13,6 +13,14 @@ type AuthDialogProps = {
 
 export function AuthDialog({ onClose, onAuthed }: AuthDialogProps) {
   const [mode, setMode] = useState<"login" | "register">("login");
+  // findings #23：Esc 关闭
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -37,7 +45,14 @@ export function AuthDialog({ onClose, onAuthed }: AuthDialogProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-ink/40 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
       <form
         onSubmit={submit}
         className="w-[360px] max-w-[92vw] border border-ink/15 bg-parchment p-6 shadow-panel"

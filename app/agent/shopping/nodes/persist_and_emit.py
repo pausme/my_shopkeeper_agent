@@ -23,6 +23,13 @@ async def persist_and_emit(
     comparison = state.get("comparison_table") or {}
     assistant_message_id = ""
 
+    # 品型候选不足提示合并进 summary（findings #24/#26）
+    note = (state.get("insufficient_note") or "").strip()
+    if note:
+        summary = recommendation.get("summary", "")
+        if note not in summary:
+            recommendation = {**recommendation, "summary": f"{note}{summary}"}
+
     # 推荐结果：只输出 LLM 给出理由的商品（无理由=模型判定不符合需求，不应硬推）
     ranked = state.get("ranked_products") or []
     reasons = {

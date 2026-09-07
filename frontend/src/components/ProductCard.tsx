@@ -46,10 +46,13 @@ export function ProductCard({
   const savePct = hasPromo
     ? Math.round((1 - (product.promotion_price ?? 0) / product.price) * 100)
     : 0;
-  const riskTags = extractRiskTags(product.reason);
   const bullets = splitReasonBullets(product.reason);
+  const riskTags = extractRiskTags(product.reason, bullets);
   const hotSales = (product.sales_30d ?? 0) >= 200;
   const lowSample = (product.review_count ?? 0) > 0 && (product.review_count ?? 0) < 10;
+  // N11.10：优先真实主图，缺失或加载失败回退品类占位
+  const [imageFailed, setImageFailed] = useState(false);
+  const showImage = Boolean(product.image_url) && !imageFailed;
 
   // N10.1 商品曝光埋点：卡片进入视口时上报一次
   const rootRef = useRef<HTMLElement | null>(null);
@@ -79,9 +82,19 @@ export function ProductCard({
       ref={rootRef}
       className="flex gap-4 rounded-xl2 border border-line bg-white p-4 shadow-card transition hover:border-primary/40"
     >
-      {/* 商品图（N4.1）：主图缺失时用品类色块占位 */}
+      {/* 商品图（N4.1/N11.10）：优先 image_url 主图，缺失/失败回退品类占位 */}
       <div className="grid h-24 w-24 shrink-0 place-items-center overflow-hidden rounded-lg bg-gradient-to-br from-primary/10 to-primary/5">
-        <ShoppingGlyph category={product.category_name} />
+        {showImage ? (
+          <img
+            src={product.image_url!}
+            alt={product.title}
+            loading="lazy"
+            onError={() => setImageFailed(true)}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <ShoppingGlyph category={product.category_name} />
+        )}
       </div>
 
       <div className="min-w-0 flex-1">
@@ -140,6 +153,9 @@ export function ProductCard({
           {lowSample && (
             <span className="rounded bg-subtle px-1 text-ink/45">评价样本较少</span>
           )}
+          <span className="rounded bg-subtle px-1 text-ink/35" title="当前为演示样本数据，非实时电商数据">
+            演示数据
+          </span>
         </div>
 
         {/* 风险标签（N4.5） */}
@@ -296,17 +312,26 @@ function ShoppingBagIcon() {
   );
 }
 
-/** 推荐理由拆成 ≤3 条 bullet */
+;/** 推荐理由拆成 ≤3 条 bullet（findings #26：去重 + 只保留完整句 + 剔除截断尾） */
 function splitReasonBullets(reason: string): string[] {
-  const parts = reason
+  const sentences = reason
     .split(/[。；;！!]/)
     .map((item) => item.trim())
-    .filter((item) => item.length > 3 && !item.startsWith("需要注意"));
-  return parts.slice(0, 3);
+    .filter(Boolean);
+  const picked: string[] = [];
+  for (const sentence of sentences) {
+    if (sentence.length < 4) continue;
+    if (sentence.startsWith("需要注意")) continue;
+    // 去重：与已选句高度相似（互相包含）时跳过
+    if (picked.some((p) => p.includes(sentence) || sentence.includes(p))) continue;
+    picked.push(sentence);
+    if (picked.length >= 3) break;
+  }
+  return picked;
 }
 
 /** 从理由中提取风险标签（短语级） */
-function extractRiskTags(reason: string): string[] {
+function extractRiskTags(reason: string, bullets: string[] = []): string[] {
   const markers = ["需要注意的是", "风险", "但差评", "需谨慎"];
   for (const marker of markers) {
     const index = reason.indexOf(marker);
@@ -315,7 +340,9 @@ function extractRiskTags(reason: string): string[] {
         .slice(index)
         .split(/[。；;]/)
         .map((item) => item.trim())
-        .filter(Boolean);
+        .filter(Boolean)
+        // findings #26：风险标签不与理由 bullet 重复
+        .filter((item) => !bullets.some((b) => b.includes(item) || item.includes(b)));
       return tail.slice(0, 2);
     }
   }

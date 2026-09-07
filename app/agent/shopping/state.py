@@ -31,6 +31,7 @@ class ShoppingAgentState(TypedDict):
     review_summary: dict  # 商品 -> 评价要点 {product_id: {negative_tags, positive_tags, sample_size}}
     risk_summary: dict  # 商品 -> 风险摘要 {product_id: {level, summary, suitable, not_suitable}}
     ranked_products: list[dict]  # 重排后的商品（含 match_score 与最终得分）
+    insufficient_note: str  # 品型候选不足提示（findings #24），空串表示充足
 
     recommendation: dict  # 推荐结果 {summary, recommendations:[{product_id, reason}], next_question}
     comparison_table: dict  # 对比表 {headers, rows}

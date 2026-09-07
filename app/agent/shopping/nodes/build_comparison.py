@@ -23,7 +23,19 @@ async def build_comparison(
     writer({"type": "progress", "step": step, "status": "running"})
 
     try:
-        ranked = (state.get("ranked_products") or [])[:COMPARE_LIMIT]
+        # findings #25：对比表与推荐卡同源——只收 LLM 给出理由的商品
+        # （推荐卡展示的正是这批），绝不让两处商品集合不一致
+        recommendation = state.get("recommendation") or {}
+        reason_ids = {
+            item.get("product_id")
+            for item in recommendation.get("recommendations", [])
+            if str(item.get("reason", "")).strip()
+        }
+        ranked_all = state.get("ranked_products") or []
+        ranked = (
+            [p for p in ranked_all if p["product_id"] in reason_ids][:COMPARE_LIMIT]
+            or ranked_all[:COMPARE_LIMIT]
+        )
         risk_summary = state.get("risk_summary") or {}
         review_summary = state.get("review_summary") or {}
 

@@ -134,7 +134,13 @@ export function ShoppingHome({ sessions, onSubmit, onOpenSession }: ShoppingHome
                 className="flex w-full items-center justify-between gap-3 rounded-xl2 border border-line bg-white px-4 py-3 text-left shadow-line transition hover:border-primary/40"
               >
                 <span className="min-w-0 flex-1 truncate text-sm text-ink/80">
-                  {session.title || session.last_query || "未命名咨询"}
+                  {(() => {
+                    const t = (session.title ?? "").trim();
+                    if (t.length >= 4 && !/^\d+$/.test(t)) return t;
+                    const f = (session.last_query ?? "").trim();
+                    if (f.length >= 4 && !/^\d+$/.test(f)) return f.slice(0, 24);
+                    return "导购咨询";
+                  })()}
                 </span>
                 <ArrowRight className="h-3.5 w-3.5 shrink-0 text-ink/35" aria-hidden="true" />
               </button>

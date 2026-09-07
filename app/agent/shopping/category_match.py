@@ -38,3 +38,22 @@ def guess_category(*texts) -> str | None:
                 logger.info(f"品类关键词兜底命中：{keyword} -> {category}")
                 return category
     return None
+
+
+# 具体品型词（区别于大品类）：命中时推荐必须锁定该品型（findings #24）
+PRODUCT_TYPE_KEYWORDS = [
+    "空气炸锅", "破壁机", "豆浆机", "电煮锅", "热水壶", "饮水机", "电饭煲", "咖啡机",
+    "落地灯", "四件套", "枕头", "按摩仪", "压缩袋", "置物架", "床垫", "除湿机",
+    "充电器", "拓展坞", "充电宝", "手环", "鼠标", "硬盘", "耳机", "键盘", "显示器",
+    "辅食机", "安全座椅", "浴巾", "奶瓶", "床中床", "奶嘴", "推车",
+]
+
+
+def match_product_type(*texts) -> str | None:
+    """从文本中命中具体品型词（如"空气炸锅"），返回品型或 None"""
+
+    joined = " ".join(str(t) for t in texts if t)
+    for keyword in PRODUCT_TYPE_KEYWORDS:
+        if keyword in joined:
+            return keyword
+    return None
