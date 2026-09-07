@@ -10,6 +10,8 @@ type ShoppingHomeProps = {
   sessions: ShoppingSessionSummary[];
   onSubmit: (query: string) => void;
   onOpenSession: (sessionId: string) => void;
+  /** findings N11.16：导购进行中时禁用快捷入口并给出提示 */
+  isStreaming?: boolean;
 };
 
 // N3.2 场景快捷入口（绑定品类和场景的模板问题）
@@ -30,7 +32,7 @@ const HOT_QUESTIONS = [
   { question: "300 以内买个保温杯送长辈，要有质感的", query: "300以内买个保温杯送长辈，要有质感一点的", tag: "送礼 · 预算" },
 ];
 
-export function ShoppingHome({ sessions, onSubmit, onOpenSession }: ShoppingHomeProps) {
+export function ShoppingHome({ sessions, onSubmit, onOpenSession, isStreaming }: ShoppingHomeProps) {
   const [draft, setDraft] = useState("");
 
   const submit = () => {
@@ -67,7 +69,7 @@ export function ShoppingHome({ sessions, onSubmit, onOpenSession }: ShoppingHome
         <button
           type="button"
           onClick={submit}
-          disabled={!draft.trim()}
+          disabled={!draft.trim() || Boolean(isStreaming)}
           className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
         >
           问导购
@@ -90,7 +92,8 @@ export function ShoppingHome({ sessions, onSubmit, onOpenSession }: ShoppingHome
               key={scene.label}
               type="button"
               onClick={() => onSubmit(scene.query)}
-              className="rounded-full border border-line bg-white px-4 py-1.5 text-sm text-ink/75 shadow-line transition hover:border-primary/45 hover:text-primary"
+              disabled={isStreaming}
+              className="rounded-full border border-line bg-white px-4 py-1.5 text-sm text-ink/75 shadow-line transition hover:border-primary/45 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
               {scene.label}
             </button>
@@ -109,7 +112,8 @@ export function ShoppingHome({ sessions, onSubmit, onOpenSession }: ShoppingHome
               key={item.question}
               type="button"
               onClick={() => onSubmit(item.query ?? item.question)}
-              className="rounded-xl2 border border-line bg-white p-4 text-left shadow-card transition hover:border-primary/40"
+              disabled={isStreaming}
+              className="rounded-xl2 border border-line bg-white p-4 text-left shadow-card transition hover:border-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <div className="text-sm leading-5 text-ink">{item.question}</div>
               <div className="mt-1.5 text-[11px] text-primary/80">{item.tag}</div>

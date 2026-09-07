@@ -175,9 +175,10 @@ export function ProductDetailModal({ product, onClose, onCompare, onAsk }: Produ
           >
             复制名称
           </button>
-          {summary && summary.review_count != null && (
+          {summary && (
             <span className="ml-auto self-center text-[11px] text-ink/40">
-              演示数据 · 样本 {summary.review_count} 条
+              演示数据 · 样本 {summary.review_count ?? 0} 条
+              {summary.updated_at ? ` · 更新于 ${summary.updated_at}` : ""}
             </span>
           )}
         </div>

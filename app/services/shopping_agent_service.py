@@ -194,6 +194,7 @@ class ShoppingAgentService:
             "sales_30d": row.sales_30d,
             "review_count": row.review_count,
             "attributes": row.attributes_json or {},
+            "updated_at": row.updated_at.strftime("%Y-%m-%d") if row.updated_at else None,
             "risk": {
                 "level": risk.risk_level if risk else "unknown",
                 "summary": risk.risk_summary if risk else "",

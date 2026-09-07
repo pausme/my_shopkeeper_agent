@@ -677,6 +677,12 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
               <Settings className="h-4 w-4" aria-hidden="true" />
             </button>
             {settingsOpen && (
+              <>
+              <div
+                className="fixed inset-0 z-30"
+                onClick={() => setSettingsOpen(false)}
+                aria-hidden="true"
+              />
               <div className="absolute right-0 top-full z-40 mt-1 w-72 rounded-xl border border-line bg-white p-4 shadow-panel">
                 <div className="mb-3 flex items-center justify-between">
                   <span className="text-sm font-semibold text-ink">设置</span>
@@ -727,6 +733,7 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                   </div>
                 </details>
               </div>
+              </>
             )}
           </div>
         </div>
@@ -744,6 +751,7 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
             sessions={shoppingSessions}
             onSubmit={(query) => void startShoppingQuery(query)}
             onOpenSession={loadShoppingSession}
+            isStreaming={isStreaming}
           />
         </main>
       ) : (

@@ -137,6 +137,7 @@ export type ProductSummary = {
   sales_30d: number | null;
   review_count: number | null;
   attributes: Record<string, string>;
+  updated_at?: string | null;
   risk: {
     level: string;
     summary: string;
