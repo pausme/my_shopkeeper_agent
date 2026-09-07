@@ -32,6 +32,7 @@ import { SkeletonCards } from "./components/SkeletonCards";
 import { cn } from "./lib/format";
 import {
   deleteShoppingSessionRemote,
+  stopShoppingSession,
   fetchShoppingSessionDetail,
   fetchShoppingSessions,
   sendShoppingEvent,
@@ -431,7 +432,11 @@ export default function App() {
     setView("home");
   };
 
-  const stopQuery = () => activeController?.abort();
+  const stopQuery = () => {
+    activeController?.abort();
+    // F-REG-004：同步标记服务端会话状态为 stopped
+    if (shoppingSessionId) stopShoppingSession(shoppingSessionId);
+  };
 
   const handleAuthed = (token: string, name: string) => {
     setJwt(token, name);
@@ -557,7 +562,10 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
           <div className="relative">
             <button
               type="button"
-              onClick={() => setHistoryOpen((open) => !open)}
+              onClick={() => {
+                setSettingsOpen(false);
+                setHistoryOpen((open) => !open);
+              }}
               className={cn(
                 "rounded-lg px-3 py-1.5 text-sm font-medium text-ink/60 transition hover:bg-subtle",
                 historyOpen && "bg-subtle text-ink",
@@ -659,7 +667,10 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
           <div className="relative">
             <button
               type="button"
-              onClick={() => setSettingsOpen((open) => !open)}
+              onClick={() => {
+                setHistoryOpen(false);
+                setSettingsOpen((open) => !open);
+              }}
               className="rounded-lg p-2 text-ink/55 transition hover:bg-subtle hover:text-ink"
               aria-label="设置"
             >

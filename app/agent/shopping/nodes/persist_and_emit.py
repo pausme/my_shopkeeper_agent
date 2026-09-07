@@ -78,5 +78,12 @@ async def persist_and_emit(
             "recommended_products": recommended,
         }
     )
-    writer({"type": "comparison", "session_id": session_id, "table": comparison})
+    # 回归 8.3-2：仅主动对比（显式选品或对比意图）才发送对比表；
+    # 普通推荐轮不自动展开完整对比，避免覆盖推荐主结论
+    is_active_compare = bool(
+        state.get("selected_product_ids")
+        or (state.get("intent") == "comparison")
+    )
+    if is_active_compare and comparison:
+        writer({"type": "comparison", "session_id": session_id, "table": comparison})
     return {}

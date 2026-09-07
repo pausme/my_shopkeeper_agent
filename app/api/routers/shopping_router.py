@@ -317,6 +317,32 @@ async def shopping_event(
     return {"ok": True}
 
 
+@shopping_router.post("/sessions/{session_id}/stop", dependencies=[Depends(get_user_scope)])
+async def stop_shopping_session(
+    session_id: str,
+    service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
+    user_id: Annotated[str | None, Depends(get_user_scope)] = None,
+):
+    """终止导购会话（F-REG-004：PRD 12.5）
+
+    服务端将会话状态置为 stopped 并记录埋点；进行中的 SSE 生成由客户端断连自然终止，
+    本接口保证会话状态与历史列表立即反映"已停止"。
+    """
+
+    exists, owner = await service.shopping_session_repository.get_session_exists_and_owner(
+        session_id
+    )
+    if not exists or (user_id is not None and owner != user_id):
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    stopped = await service.shopping_session_repository.stop_session(session_id)
+    await service.shopping_session_repository.save_event(
+        session_id, None, user_id, "session_stopped", {}
+    )
+    await service.session.commit()
+    return {"ok": True, "status": "stopped" if stopped else "stopped"}
+
+
 @shopping_router.delete("/sessions/{session_id}", dependencies=[Depends(get_user_scope)])
 async def delete_shopping_session(
     session_id: str,

@@ -156,6 +156,21 @@ class ShoppingSessionRepository:
             for row in result.scalars()
         ]
 
+    async def stop_session(self, session_id: str) -> bool:
+        """标记会话为 stopped（F-REG-004：PRD 停止会话接口的持久化语义）"""
+
+        result = await self.session.execute(
+            select(ShoppingSessionMySQL).where(
+                ShoppingSessionMySQL.session_id == session_id,
+                ShoppingSessionMySQL.is_deleted == 0,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing is None:
+            return False
+        existing.status = "stopped"
+        return True
+
     async def delete_session(self, session_id: str) -> bool:
         """逻辑删除会话及其消息（M9.3 隐私控制：用户可清除自己的导购历史）"""
 

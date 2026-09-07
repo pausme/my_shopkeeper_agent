@@ -106,6 +106,12 @@ jobs:
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
+      - name: Run system regression on server
+        run: |
+          set -e
+          HOST="${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
+          ssh "$HOST" 'cd ~/shopkeeper-agent && export PATH="$HOME/.local/bin:$PATH" && API_TOKEN=\$(grep ^API_TOKEN= .env | cut -d= -f2) uv run python scripts/regression_test.py'
+
       - name: Run shopping smoke evals on server
         run: |
           set -e

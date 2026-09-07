@@ -178,8 +178,11 @@ def evaluate_case(case: dict, results: list[CaseResult]) -> list[str]:
         failures.extend(f"{prefix}{f}" if prefix else f for f in result.run_checks(turn.get("checks") or {}))
 
         # 验收项：完整多轮以推荐收尾时，末轮必须满足推荐类验收
+        # 回归 8.3-1：具体品型候选不足且已明示"候选不足"时，允许少于 3 款
         if case.get("acceptance") and index == len(turns) and result.recommendation is not None:
-            if len(result.recommended) < 3:
+            summary_text = (result.recommendation or {}).get("summary", "")
+            insufficient = "候选不足" in summary_text
+            if len(result.recommended) < 3 and not insufficient:
                 failures.append(f"{prefix}验收：推荐商品数 {len(result.recommended)} < 3")
             if not all(p.get("reason", "").strip() for p in result.recommended):
                 failures.append(f"{prefix}验收：存在空理由推荐")
