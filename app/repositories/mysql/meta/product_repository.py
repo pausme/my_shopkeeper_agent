@@ -107,11 +107,20 @@ class ProductRepository:
         )
         return list(result.scalars()), total
 
+    async def _get_by_product_id(self, product_id: str) -> ProductInfoMySQL | None:
+        """按业务键 product_id 查行（主键是自增 id，勿用 session.get）"""
+
+        result = await self.session.execute(
+            select(ProductInfoMySQL).where(ProductInfoMySQL.product_id == product_id)
+        )
+        row = result.scalar_one_or_none()
+        return row if row and not row.is_deleted else None
+
     async def update_product(self, product_id: str, fields: dict) -> ProductInfoMySQL | None:
         """管理台部分更新商品字段（仅白名单键），返回更新后行"""
 
-        row = await self.session.get(ProductInfoMySQL, product_id)
-        if row is None or row.is_deleted:
+        row = await self._get_by_product_id(product_id)
+        if row is None:
             return None
         for key, value in fields.items():
             setattr(row, key, value)
@@ -120,8 +129,8 @@ class ProductRepository:
     async def soft_delete_product(self, product_id: str) -> bool:
         """软删商品（置 is_deleted，检索层靠重建索引同步）"""
 
-        row = await self.session.get(ProductInfoMySQL, product_id)
-        if row is None or row.is_deleted:
+        row = await self._get_by_product_id(product_id)
+        if row is None:
             return False
         row.is_deleted = 1
         row.status = "deleted"
@@ -141,7 +150,12 @@ class ProductRepository:
     async def update_risk_summary(self, product_id: str, fields: dict) -> ProductRiskSummaryMySQL | None:
         """管理台编辑风险摘要（等级/标签/适合人群等）"""
 
-        row = await self.session.get(ProductRiskSummaryMySQL, product_id)
+        result = await self.session.execute(
+            select(ProductRiskSummaryMySQL).where(
+                ProductRiskSummaryMySQL.product_id == product_id
+            )
+        )
+        row = result.scalar_one_or_none()
         if row is None:
             return None
         for key, value in fields.items():
