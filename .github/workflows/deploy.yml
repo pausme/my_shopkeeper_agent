@@ -110,7 +110,7 @@ jobs:
         run: |
           set -e
           HOST="${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
-          ssh "$HOST" 'cd ~/shopkeeper-agent && export PATH="$HOME/.local/bin:$PATH" && API_TOKEN=\$(grep ^API_TOKEN= .env | cut -d= -f2) uv run python scripts/regression_test.py'
+          ssh "$HOST" 'cd ~/shopkeeper-agent && export PATH="$HOME/.local/bin:$PATH" && API_TOKEN=$(grep ^API_TOKEN= .env | cut -d= -f2) uv run python scripts/regression_test.py'
 
       - name: Run shopping smoke evals on server
         run: |
