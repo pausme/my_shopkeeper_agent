@@ -68,3 +68,8 @@ docker/embedding/
 
 # Personal renovation TODO (kept local, not for the repo)
 /docs/TODO.md
+
+# Playwright E2E 产物
+frontend/e2e/__screenshots__/
+frontend/test-results/
+frontend/playwright-report/

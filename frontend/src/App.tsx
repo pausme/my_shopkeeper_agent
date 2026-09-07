@@ -575,7 +575,7 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
             </button>
             {historyOpen && (
               <div
-                className="fixed inset-0 z-30"
+                className="fixed inset-x-0 bottom-0 top-14 z-30"
                 onClick={() => setHistoryOpen(false)}
                 aria-hidden="true"
               />
@@ -679,7 +679,7 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
             {settingsOpen && (
               <>
               <div
-                className="fixed inset-0 z-30"
+                className="fixed inset-x-0 bottom-0 top-14 z-30"
                 onClick={() => setSettingsOpen(false)}
                 aria-hidden="true"
               />

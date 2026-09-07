@@ -99,6 +99,20 @@ jobs:
     needs: deploy
     timeout-minutes: 60
     steps:
+      # E2E 需要仓库源码与 pnpm 环境（Playwright 在 runner 上直打生产站点）
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install frontend deps
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -111,6 +125,16 @@ jobs:
           set -e
           HOST="${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
           ssh "$HOST" 'cd ~/shopkeeper-agent && export PATH="$HOME/.local/bin:$PATH" && API_TOKEN=$(grep ^API_TOKEN= .env | cut -d= -f2) uv run python scripts/regression_test.py'
+
+      - name: Run Playwright E2E against production
+        run: |
+          set -e
+          HOST="${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
+          # 令牌从服务器 .env 现取，不落仓库；E2E 直打生产站点
+          TOKEN=$(ssh "$HOST" 'grep ^API_TOKEN= ~/shopkeeper-agent/.env | cut -d= -f2')
+          cd frontend
+          pnpm exec playwright install --with-deps chromium
+          CI=true E2E_BASE_URL="http://${{ secrets.DEPLOY_HOST }}" E2E_API_TOKEN="$TOKEN" pnpm test:e2e
 
       - name: Run shopping smoke evals on server
         run: |
