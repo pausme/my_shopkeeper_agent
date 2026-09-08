@@ -22,7 +22,10 @@ type BundleGroup = {
 
 type BundleModalProps = {
   product: RecommendedProduct;
+  /** N11.31：已购商品 id——服务端从搭配结果中剔除，前端提示已排除 */
   purchasedProductIds?: string[];
+  /** N11.30：埋点归属会话 */
+  sessionId?: string;
   onClose: () => void;
   onFollowUp?: (question: string) => void;
 };
@@ -36,10 +39,12 @@ const GROUP_BADGE: Record<string, string> = {
 export function BundleModal({
   product,
   purchasedProductIds = [],
+  sessionId,
   onClose,
   onFollowUp,
 }: BundleModalProps) {
   const [bundles, setBundles] = useState<BundleGroup[] | null>(null);
+  const [note, setNote] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -47,12 +52,14 @@ export function BundleModal({
       if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
-    fetchBundleRecommend(product.product_id, purchasedProductIds)
-      .then((d) => setBundles(d.bundles ?? []))
+    fetchBundleRecommend(product.product_id, purchasedProductIds, sessionId)
+      .then((d) => {
+        setBundles(d.bundles ?? []);
+        setNote(d.note ?? "");
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "加载失败"));
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [product.product_id]);
+  }, [product.product_id, purchasedProductIds, sessionId, onClose]);
 
   return (
     <div
@@ -84,6 +91,12 @@ export function BundleModal({
         {error && (
           <div className="rounded-lg bg-risk/5 px-3 py-2 text-sm text-risk">{error}</div>
         )}
+        {purchasedProductIds.length > 0 && !error && (
+          <p className="mb-3 text-xs text-ink/50">
+            已自动排除你标记为已购的 {purchasedProductIds.length} 件商品，不再重复推荐。
+          </p>
+        )}
+        {note && <p className="mb-3 text-xs text-brass">{note}</p>}
         {!error && bundles === null && (
           <div className="flex items-center gap-2 py-8 text-sm text-ink/50">
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />

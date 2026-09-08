@@ -174,6 +174,7 @@ export type BundleGroup = {
 export function fetchBundleRecommend(
   productId: string,
   purchasedProductIds: string[] = [],
+  sessionId?: string,
 ): Promise<{
   main: { product_id: string; title: string };
   bundles: BundleGroup[];
@@ -184,6 +185,7 @@ export function fetchBundleRecommend(
     body: JSON.stringify({
       product_id: productId,
       purchased_product_ids: purchasedProductIds,
+      session_id: sessionId ?? null,
     }),
   });
 }

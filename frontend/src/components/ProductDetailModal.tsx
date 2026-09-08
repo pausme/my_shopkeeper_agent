@@ -2,7 +2,7 @@
  * 商品详情弹窗（N6.2/N6.5）
  * 展示商品参数、好评/差评摘要、适合/不适合人群、样本量与风险等级
  */
-import { AlertTriangle, Check, Star, X } from "lucide-react";
+import { AlertTriangle, Check, CircleCheckBig, ShoppingBag, Star, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { fetchProductSummary, type ProductSummary } from "../lib/shoppingApi";
 import type { RecommendedProduct } from "../types/shopping";
@@ -15,6 +15,9 @@ type ProductDetailModalProps = {
   onAsk?: (productId: string, title: string) => void;
   /** S3-5：查看搭配购买方案 */
   onShowBundle?: (productId: string) => void;
+  /** N11.31：已购标记（本地维护，用于搭配购买去重） */
+  purchased?: boolean;
+  onTogglePurchased?: (productId: string) => void;
 };
 
 export function ProductDetailModal({
@@ -23,6 +26,8 @@ export function ProductDetailModal({
   onCompare,
   onAsk,
   onShowBundle,
+  purchased = false,
+  onTogglePurchased,
 }: ProductDetailModalProps) {
   const [summary, setSummary] = useState<ProductSummary | null>(null);
   const [error, setError] = useState("");
@@ -201,6 +206,30 @@ export function ProductDetailModal({
               className="rounded-md border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/5"
             >
               查看搭配购
+            </button>
+          )}
+          {onTogglePurchased && (
+            <button
+              type="button"
+              onClick={() => onTogglePurchased(product.product_id)}
+              title="已购商品不会出现在搭配购买建议里"
+              className={
+                purchased
+                  ? "inline-flex items-center gap-1 rounded-md bg-good/10 px-3 py-1.5 text-xs font-medium text-good transition hover:bg-good/20"
+                  : "inline-flex items-center gap-1 rounded-md border border-line px-3 py-1.5 text-xs text-ink/60 transition hover:border-primary/40 hover:text-primary"
+              }
+            >
+              {purchased ? (
+                <>
+                  <CircleCheckBig className="h-3 w-3" aria-hidden="true" />
+                  已购（点击撤销）
+                </>
+              ) : (
+                <>
+                  <ShoppingBag className="h-3 w-3" aria-hidden="true" />
+                  标记为已购
+                </>
+              )}
             </button>
           )}
           {summary && (

@@ -371,6 +371,8 @@ class BundleSchema(BaseModel):
     product_id: str = Field(min_length=1, max_length=64)
     # 已购联动：这些商品不重复进入搭配结果
     purchased_product_ids: list[str] = Field(default_factory=list, max_length=10)
+    # N11.30：埋点归属会话（可选；缺省不记埋点，避免伪会话污染事件表）
+    session_id: str | None = Field(default=None, max_length=64)
 
 
 @shopping_router.post("/bundles/recommend", dependencies=[Depends(get_user_scope)])
@@ -397,10 +399,11 @@ async def bundle_recommend(
             bundle["bundles"] = []
             bundle["note"] = "搭配商品均已购买，暂无新的搭配建议"
 
-    # 埋点
-    if user_id:
+    # 埋点（N11.30 修复：原实现引用未定义的 body.session_id 必现 500；
+    # 现仅在真实会话上下文中记录）
+    if user_id and body.session_id:
         await service.shopping_session_repository.save_event(
-            body.session_id or "DIRECT", None, user_id,
+            body.session_id, None, user_id,
             "bundle_view", {"product_id": body.product_id},
         )
         await service.session.commit()

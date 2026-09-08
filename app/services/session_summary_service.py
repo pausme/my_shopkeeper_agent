@@ -9,6 +9,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.product import ProductInfoMySQL
 from app.models.shopping import (
     ShoppingMessageMySQL,
     ShoppingRecommendationMySQL,
@@ -22,6 +23,26 @@ class SessionSummaryService:
 
     def __init__(self, session: AsyncSession):
         self.session = session
+
+    async def _resolve_focus_names(self, product_ids: list[str]) -> list[str]:
+        """N11.29：关注商品对外只显示名称，不暴露 P0005 这类内部编号
+
+        名称缺失（商品被软删）时退化为"已关注商品N"占位。
+        """
+
+        if not product_ids:
+            return []
+        result = await self.session.execute(
+            select(ProductInfoMySQL.product_id, ProductInfoMySQL.title).where(
+                ProductInfoMySQL.product_id.in_(product_ids),
+                ProductInfoMySQL.is_deleted == 0,
+            )
+        )
+        titles = {row.product_id: row.title for row in result}
+        return [
+            titles.get(pid, f"已关注商品{index + 1}")
+            for index, pid in enumerate(product_ids)
+        ]
 
     async def generate(self, session_id: str, user_id: str | None) -> dict | None:
         """生成（或刷新）会话总结；会话不存在返回 None"""
@@ -97,7 +118,7 @@ class SessionSummaryService:
             "session_id": session_id,
             "summary_text": summary_text,
             "unresolved_questions": unresolved[:5],
-            "focus_products": focus_ids[:5],
+            "focus_products": await self._resolve_focus_names(focus_ids[:5]),
         }
 
     async def get(self, session_id: str) -> dict | None:
@@ -117,5 +138,5 @@ class SessionSummaryService:
             "session_id": row.session_id,
             "summary_text": row.summary_text,
             "unresolved_questions": row.unresolved_questions_json or [],
-            "focus_products": row.focus_products_json or [],
+            "focus_products": await self._resolve_focus_names(row.focus_products_json or []),
         }

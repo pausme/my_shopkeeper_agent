@@ -96,8 +96,20 @@ export default function App() {
   const [bundleProduct, setBundleProduct] = useState<RecommendedProduct | null>(null);
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [sessionLoadError, setSessionLoadError] = useState("");
-  // 二期 S2：已关注商品 ID 集合
+  // 二期 S2：已关注商品 ID 集合 + 最近降价提醒（关注列表接口一并返回）
   const [watchedIds, setWatchedIds] = useState<string[]>([]);
+  const [recentAlerts, setRecentAlerts] = useState<
+    Array<{ alert_id: string; alert_reason: string | null; alert_price: number; alert_status: string }>
+  >([]);
+  // N11.31：已购商品标记（本地维护；搭配购买据此去重，不重复推荐已购商品）
+  const [purchasedIds, setPurchasedIds] = useState<string[]>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem("shopkeeper.purchasedIds") ?? "[]");
+      return Array.isArray(raw) ? raw.filter((id) => typeof id === "string") : [];
+    } catch {
+      return [];
+    }
+  });
   // 二期 S1：偏好中心（登录后启用）与总结卡
   const { preferences, reload: reloadPreferences, remove: removePreference } = usePreferences(
     Boolean(jwt),
@@ -133,12 +145,17 @@ export default function App() {
       .catch(() => setShoppingSessions([]));
     if (jwt) {
       fetchWatchlist()
-        .then((d: { items: Array<{ product_id: string }> }) =>
-          setWatchedIds(d.items.map((i) => i.product_id)),
-        )
-        .catch(() => setWatchedIds([]));
+        .then((d: { items: Array<{ product_id: string }>; recent_alerts?: Array<{ alert_id: string; alert_reason: string | null; alert_price: number; alert_status: string }> }) => {
+          setWatchedIds(d.items.map((i) => i.product_id));
+          setRecentAlerts(d.recent_alerts ?? []);
+        })
+        .catch(() => {
+          setWatchedIds([]);
+          setRecentAlerts([]);
+        });
     } else {
       setWatchedIds([]);
+      setRecentAlerts([]);
     }
   }, [jwt]);
 
@@ -390,6 +407,21 @@ export default function App() {
     );
   };
 
+  // N11.31：已购标记开关（localStorage 持久化，搭配购买联动去重）
+  const handleTogglePurchased = (productId: string) => {
+    setPurchasedIds((current) => {
+      const next = current.includes(productId)
+        ? current.filter((id) => id !== productId)
+        : [...current, productId];
+      try {
+        localStorage.setItem("shopkeeper.purchasedIds", JSON.stringify(next));
+      } catch {
+        // 私有模式等写入失败时仅保留内存态
+      }
+      return next;
+    });
+  };
+
   const handleAskAbout = (_productId: string, title: string) => {
     if (isStreaming) return;
     void startShoppingQuery(`${title} 值不值得买？帮我分析一下`);
@@ -572,6 +604,8 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
       {bundleProduct && (
         <BundleModal
           product={bundleProduct}
+          purchasedProductIds={purchasedIds}
+          sessionId={shoppingSessionId || undefined}
           onClose={() => setBundleProduct(null)}
           onFollowUp={(question) => {
             setBundleProduct(null);
@@ -583,6 +617,8 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
         <ProductDetailModal
           product={detailProduct}
           onClose={() => setDetailProduct(null)}
+          purchased={purchasedIds.includes(detailProduct.product_id)}
+          onTogglePurchased={handleTogglePurchased}
           onShowBundle={(productId) => {
             const target = shoppingMessages
               .flatMap((m) => m.products ?? [])
@@ -784,6 +820,28 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                 >
                   {jwt ? `已登录：${username}（退出）` : "登录 / 注册"}
                 </button>
+                {/* 二期 S2/P2：降价提醒的用户可见出口（关注列表接口一并返回） */}
+                {jwt && (
+                  <div className="mb-3 rounded-lg bg-subtle px-3 py-2.5">
+                    <div className="mb-1.5 text-xs font-semibold text-ink/70">我的降价提醒</div>
+                    {recentAlerts.length === 0 ? (
+                      <p className="text-[11px] leading-4 text-ink/45">
+                        暂无提醒。在商品卡点"关注"并设置目标价后，降价会自动提醒你。
+                      </p>
+                    ) : (
+                      <ul className="space-y-1.5">
+                        {recentAlerts.slice(0, 3).map((alert) => (
+                          <li key={alert.alert_id} className="text-[11px] leading-4 text-ink/70">
+                            <span className="mr-1 inline-block rounded bg-good/10 px-1 py-0.5 text-[10px] text-good">
+                              降价
+                            </span>
+                            {alert.alert_reason ?? `关注商品已降到 ${alert.alert_price} 元`}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
                 {jwt && (
                   <a
                     href="#/admin"
