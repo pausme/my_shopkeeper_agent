@@ -20,6 +20,9 @@ type ShoppingBubbleProps = {
   onDetail?: (productId: string) => void;
   onCompare?: (productId: string) => void;
   onAsk?: (productId: string, title: string) => void;
+  /** S2：已关注商品集合与关注回调 */
+  watchedIds?: string[];
+  onWatch?: (productId: string) => void;
   compareIds?: string[];
   /** 对比表上方结论（取自同轮推荐总结） */
   conclusion?: string;
@@ -35,6 +38,8 @@ export function ShoppingBubble({
   onAsk,
   compareIds = [],
   conclusion,
+  watchedIds,
+  onWatch,
 }: ShoppingBubbleProps) {
   const isUser = message.role === "user";
 
@@ -142,6 +147,10 @@ export function ShoppingBubble({
                       onCompare={onCompare}
                       onAsk={onAsk}
                       inCompare={compareIds.includes(product.product_id)}
+                      watched={watchedIds?.includes(product.product_id)}
+                      onWatch={
+                        onWatch ? () => onWatch(product.product_id) : undefined
+                      }
                     />
                   ))}
                 </div>

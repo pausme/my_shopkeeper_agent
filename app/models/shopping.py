@@ -102,6 +102,51 @@ class ShoppingFeedbackMySQL(Base):
     is_deleted: Mapped[int] = mapped_column(default=0, comment="逻辑删除")
 
 
+class ShoppingWatchlistMySQL(Base):
+    """商品关注表（二期 S2）"""
+
+    __tablename__ = "shopping_watchlist"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    watch_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, comment="用户 ID")
+    product_id: Mapped[str] = mapped_column(String(64), nullable=False, comment="商品 ID")
+    product_title_snapshot: Mapped[str | None] = mapped_column(String(255), comment="标题快照")
+    target_price: Mapped[object | None] = mapped_column(DECIMAL(10, 2), comment="目标价")
+    current_price: Mapped[object | None] = mapped_column(DECIMAL(10, 2), comment="当前价")
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="active", comment="active/triggered/canceled"
+    )
+    created_at: Mapped[object] = mapped_column(
+        DateTime, server_default=func.now(), comment="创建时间"
+    )
+    updated_at: Mapped[object] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间"
+    )
+
+    __table_args__ = (Index("uk_user_product", "user_id", "product_id", unique=True),)
+
+
+class ShoppingPriceAlertMySQL(Base):
+    """价格提醒表（二期 S2，可追溯）"""
+
+    __tablename__ = "shopping_price_alert"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    alert_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    watch_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, comment="用户 ID")
+    product_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    alert_price: Mapped[object] = mapped_column(DECIMAL(10, 2), nullable=False, comment="命中价格")
+    alert_reason: Mapped[str | None] = mapped_column(String(500), comment="命中原因")
+    alert_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="pending", comment="pending/sent/read"
+    )
+    created_at: Mapped[object] = mapped_column(
+        DateTime, server_default=func.now(), comment="创建时间"
+    )
+
+
 class ShoppingUserPreferenceMySQL(Base):
     """用户偏好表（二期 S1）"""
 

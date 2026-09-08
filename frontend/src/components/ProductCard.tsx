@@ -23,6 +23,9 @@ type ProductCardProps = {
   onCompare?: (productId: string) => void;
   onAsk?: (productId: string, title: string) => void;
   inCompare?: boolean;
+  /** S2：当前商品是否已关注（父层维护状态） */
+  watched?: boolean;
+  onWatch?: (productId: string, targetPrice: number | null) => void;
 };
 
 const VERDICT_STYLE: Record<string, string> = {
@@ -40,6 +43,8 @@ export function ProductCard({
   onCompare,
   onAsk,
   inCompare,
+  watched,
+  onWatch,
 }: ProductCardProps) {
   const price = product.promotion_price ?? product.price;
   const hasPromo = product.promotion_price != null && product.promotion_price < product.price;
@@ -198,6 +203,24 @@ export function ProductCard({
             <BookOpenCheck className="h-3 w-3" aria-hidden="true" />
             查看详情
           </button>
+          {onWatch && (
+            <button
+              type="button"
+              onClick={() => {
+                track(watched ? "unwatch" : "watch");
+                onWatch(product.product_id, product.promotion_price ?? product.price);
+              }}
+              className={cn(
+                "inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-2 py-1 text-xs font-medium transition",
+                watched
+                  ? "border-brass/50 bg-brass/10 text-brass"
+                  : "border-line text-ink/70 hover:border-brass/50 hover:text-brass",
+              )}
+              title={watched ? "已关注，点击取消" : "关注后降价可提醒"}
+            >
+              {watched ? "已关注" : "关注"}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {

@@ -14,6 +14,7 @@ from app.api.routers.admin_router import admin_router
 from app.api.routers.auth_router import auth_router
 from app.api.routers.preference_router import preference_router
 from app.api.routers.shopping_router import shopping_router
+from app.api.routers.watchlist_router import alerts_router, watchlist_router
 from app.core.context import request_id_ctx_var
 
 # lifespan 交给 FastAPI 管理，用于在服务启动和关闭时统一初始化与释放外部客户端
@@ -23,6 +24,9 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(auth_router)
 # 偏好中心路由（二期 S1）
 app.include_router(preference_router)
+# 商品关注与降价提醒路由（二期 S2）
+app.include_router(watchlist_router)
+app.include_router(alerts_router)
 # AI 商品决策助手（导购）路由
 app.include_router(shopping_router)
 # 商品数据管理台路由（管理员）

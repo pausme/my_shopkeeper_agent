@@ -35,6 +35,9 @@ import { cn } from "./lib/format";
 import {
   deleteShoppingSessionRemote,
   stopShoppingSession,
+  unwatchProduct,
+  watchProduct,
+  fetchWatchlist,
   fetchShoppingSessionDetail,
   fetchShoppingSessions,
   sendShoppingEvent,
@@ -91,6 +94,8 @@ export default function App() {
   const [detailProduct, setDetailProduct] = useState<RecommendedProduct | null>(null);
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [sessionLoadError, setSessionLoadError] = useState("");
+  // 二期 S2：已关注商品 ID 集合
+  const [watchedIds, setWatchedIds] = useState<string[]>([]);
   // 二期 S1：偏好中心（登录后启用）与总结卡
   const { preferences, reload: reloadPreferences, remove: removePreference } = usePreferences(
     Boolean(jwt),
@@ -124,6 +129,15 @@ export default function App() {
     fetchShoppingSessions()
       .then(setShoppingSessions)
       .catch(() => setShoppingSessions([]));
+    if (jwt) {
+      fetchWatchlist()
+        .then((d: { items: Array<{ product_id: string }> }) =>
+          setWatchedIds(d.items.map((i) => i.product_id)),
+        )
+        .catch(() => setWatchedIds([]));
+    } else {
+      setWatchedIds([]);
+    }
   }, [jwt]);
 
   const [now, setNow] = useState(() => Date.now());
@@ -342,6 +356,26 @@ export default function App() {
   const handleOptionClick = (option: string) => {
     if (isStreaming) return;
     void startShoppingQuery(option);
+  };
+
+  // S2：关注/取消关注（幂等），未登录时提示
+  const handleWatch = (productId: string) => {
+    const watched = watchedIds.includes(productId);
+    if (!jwt) {
+      setSessionLoadError("关注商品需要先登录（右上角设置）");
+      window.setTimeout(() => setSessionLoadError(""), 3000);
+      return;
+    }
+    const request = watched ? unwatchProduct(productId) : watchProduct(productId);
+    void request
+      .then(() => {
+        setWatchedIds((current) =>
+          watched
+            ? current.filter((id) => id !== productId)
+            : [...current, productId],
+        );
+      })
+      .catch(() => {});
   };
 
   const handleCompare = (productId: string) => {
@@ -941,6 +975,8 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                                           onCompare={handleCompare}
                                           onAsk={handleAskAbout}
                                           inCompare={compareIds.includes(product.product_id)}
+                                          watched={watchedIds.includes(product.product_id)}
+                                          onWatch={handleWatch}
                                         />
                                       ))}
                                     </div>

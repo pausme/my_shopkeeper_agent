@@ -158,6 +158,27 @@ export function stopShoppingSession(sessionId: string): void {
   }).catch(() => {});
 }
 
+export function fetchWatchlist(): Promise<{
+  items: Array<{ watch_id: string; product_id: string; product_title: string | null; target_price: number | null; current_price: number | null; status: string }>;
+  recent_alerts: Array<{ alert_id: string; product_id: string; alert_price: number; alert_reason: string | null; alert_status: string }>;
+}> {
+  return requestJson("/api/shopping/watchlist");
+}
+
+export function watchProduct(
+  productId: string,
+  targetPrice?: number | null,
+): Promise<{ ok: boolean; created: boolean }> {
+  return requestJson("/api/shopping/watchlist", {
+    method: "POST",
+    body: JSON.stringify({ product_id: productId, target_price: targetPrice ?? null }),
+  });
+}
+
+export function unwatchProduct(productId: string): Promise<{ ok: boolean }> {
+  return requestJson(`/api/shopping/watchlist/${productId}`, { method: "DELETE" });
+}
+
 export function deleteShoppingSessionRemote(sessionId: string): Promise<{ ok: boolean }> {
   return requestJson(`/api/shopping/sessions/${sessionId}`, { method: "DELETE" });
 }
