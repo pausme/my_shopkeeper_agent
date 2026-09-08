@@ -87,6 +87,9 @@ class ShoppingAgentService:
         from app.services.session_summary_service import SessionSummaryService
 
         self.session_summary_service = SessionSummaryService(session)
+        from app.services.bundle_service import BundleService
+
+        self.bundle_service = BundleService(session)
 
     async def query(
         self,

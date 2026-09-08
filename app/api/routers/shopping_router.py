@@ -364,6 +364,49 @@ async def delete_shopping_session(
     return {"ok": True}
 
 
+# ---------- 搭配购买（二期 P1 / PRD 4.4） ----------
+
+
+class BundleSchema(BaseModel):
+    product_id: str = Field(min_length=1, max_length=64)
+    # 已购联动：这些商品不重复进入搭配结果
+    purchased_product_ids: list[str] = Field(default_factory=list, max_length=10)
+
+
+@shopping_router.post("/bundles/recommend", dependencies=[Depends(get_user_scope)])
+async def bundle_recommend(
+    body: BundleSchema,
+    service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
+    user_id: Annotated[str | None, Depends(get_user_scope)] = None,
+):
+    """输出主商品的组合购/补充购/替代购搭配方案"""
+
+    bundle = await service.bundle_service.recommend(body.product_id)
+    if bundle is None:
+        raise HTTPException(status_code=404, detail="商品不存在")
+
+    # 已购联动（S3-2）：purchased ids 从结果中剔除
+    purchased = set(body.purchased_product_ids)
+    if purchased:
+        for group in bundle.get("bundles", []):
+            group["products"] = [
+                p for p in group["products"] if p["product_id"] not in purchased
+            ]
+        bundle["bundles"] = [g for g in bundle["bundles"] if g["products"]]
+        if not bundle["bundles"]:
+            bundle["bundles"] = []
+            bundle["note"] = "搭配商品均已购买，暂无新的搭配建议"
+
+    # 埋点
+    if user_id:
+        await service.shopping_session_repository.save_event(
+            body.session_id or "DIRECT", None, user_id,
+            "bundle_view", {"product_id": body.product_id},
+        )
+        await service.session.commit()
+    return bundle
+
+
 # ---------- 会话总结（二期 S1-3，PRD 4.3） ----------
 
 
