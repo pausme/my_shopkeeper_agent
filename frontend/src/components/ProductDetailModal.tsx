@@ -61,24 +61,35 @@ export function ProductDetailModal({
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h3 className="text-base font-semibold text-ink">{product.title}</h3>
-            <div className="mt-1 flex items-center gap-3 text-xs text-ink/55">
+            <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-ink/55">
               <span className="inline-flex items-center gap-0.5">
                 <Star className="h-3 w-3 fill-brass text-brass" aria-hidden="true" />
                 {product.rating}
               </span>
               <span className="text-price font-semibold">¥{product.promotion_price ?? product.price}</span>
               {product.brand && <span>{product.brand}</span>}
+              {/* N6.2/P1 图文摘要增强：风险等级徽章 + 更新时间 */}
+              {summary?.risk.level && summary.risk.level !== "unknown" && (
+                <span
+                  className={
+                    summary.risk.level === "high"
+                      ? "rounded bg-risk/10 px-1.5 py-0.5 text-risk"
+                      : summary.risk.level === "medium"
+                        ? "rounded bg-brass/15 px-1.5 py-0.5 text-brass"
+                        : "rounded bg-good/10 px-1.5 py-0.5 text-good"
+                  }
+                >
+                  风险{summary.risk.level === "high" ? "高" : summary.risk.level === "medium" ? "中" : "低"}
+                </span>
+              )}
             </div>
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="self-end rounded-full p-1.5 text-ink/45 transition hover:bg-subtle hover:text-ink"
-              aria-label="关闭"
-            >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
+            {/* 数据可信信息（findings #22） */}
+            <div className="mt-1.5 flex flex-wrap gap-2 text-[11px] text-ink/40">
+              {summary?.updated_at && <span>数据更新于 {summary.updated_at}</span>}
+              {(summary?.risk.sample_size ?? 0) > 0 && (
+                <span>评价样本 {summary!.risk.sample_size} 条</span>
+              )}
+            </div>
           </div>
         </div>
 
