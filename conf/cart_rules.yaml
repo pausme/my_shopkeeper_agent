@@ -1,0 +1,28 @@
+# 购物车优惠券/满减规则（P2，可配置化）
+# category_thresholds：品类满减（每个品类小计独立判断，可叠加）
+# coupons：优惠券码（percentage=折扣百分比，fixed=立减金额）
+# 运营修改后立即生效（每次模拟时读取，无需重启）
+
+category_thresholds:
+  - category: 厨房小电器
+    threshold: 500
+    discount: 50
+  - category: 家居生活
+    threshold: 300
+    discount: 30
+  - category: 数码配件
+    threshold: 200
+    discount: 20
+  - category: 母婴用品
+    threshold: 400
+    discount: 40
+
+coupons:
+  - code: NEW50
+    type: fixed
+    value: 50
+    desc: 新用户立减 50
+  - code: PICK90
+    type: percentage
+    value: 90
+    desc: 全场 9 折

@@ -178,6 +178,47 @@ async def patch_risk(
     return {"ok": True}
 
 
+# ---------- 提醒规则配置（P2） ----------
+
+
+@admin_router.get("/alert-rules")
+async def list_alert_rules(
+    admin: Annotated[str, Depends(get_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_meta_session)],
+):
+    """提醒规则列表（空表返回内置默认）"""
+
+    from app.services.alert_rule_service import AlertRuleService
+
+    return {"items": await AlertRuleService(session).list_rules()}
+
+
+class AlertRuleSchema(BaseModel):
+    rule_key: str = Field(min_length=1, max_length=64)
+    description: str | None = Field(default=None, max_length=255)
+    value_json: dict
+
+
+@admin_router.put("/alert-rules/{rule_key}")
+async def put_alert_rule(
+    rule_key: str,
+    body: AlertRuleSchema,
+    admin: Annotated[str, Depends(get_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_meta_session)],
+):
+    """新增或更新提醒规则（立即生效：check_price_alerts 每次运行时读取）"""
+
+    if rule_key != body.rule_key:
+        raise HTTPException(status_code=400, detail="rule_key 不一致")
+    from app.services.alert_rule_service import AlertRuleService
+
+    await AlertRuleService(session).upsert_rule(
+        body.rule_key, body.description, body.value_json
+    )
+    await session.commit()
+    return {"ok": True}
+
+
 # ---------- 一键重建索引 ----------
 
 

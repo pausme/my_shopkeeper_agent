@@ -16,12 +16,29 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
+from datetime import datetime
+
 from sqlalchemy import select
 
 from app.clients.mysql_client_manager import meta_mysql_client_manager
 from app.models.product import ProductInfoMySQL
 from app.models.shopping import ShoppingWatchlistMySQL
 from app.repositories.mysql.meta.watchlist_repository import WatchlistRepository
+from app.services.alert_rule_service import AlertRuleService
+
+
+def _in_quiet_hours(now: datetime, quiet: dict) -> bool:
+    """当前时刻是否落在静默时段（支持 22:00-08:00 跨午夜窗口）"""
+
+    try:
+        start = datetime.strptime(str(quiet.get("start", "22:00")), "%H:%M").time()
+        end = datetime.strptime(str(quiet.get("end", "08:00")), "%H:%M").time()
+    except ValueError:
+        return False
+    current = now.time()
+    if start <= end:
+        return start <= current < end
+    return current >= start or current < end
 
 
 async def main() -> int:
@@ -38,12 +55,29 @@ async def main() -> int:
         watches = list(result.scalars())
 
         repository = WatchlistRepository(session)
+
+        # P2 规则：全局开关关闭时整轮跳过（不打扰用户）
+        effective = await AlertRuleService(session).get_effective()
+        global_rule = effective.get("global", {})
+        if not global_rule.get("enabled", True):
+            print("提醒全局开关已关闭，跳过本轮生成")
+            print("PRICE_CHECK_DONE: checked=0 alerts_created=0")
+            return 0
+
+        # P2 规则：静默时段内不生成新提醒，时段结束后下一轮补上
+        quiet_rule = effective.get("quiet_hours") or {}
+        if _in_quiet_hours(datetime.now(), quiet_rule):
+            print(
+                "当前处于静默时段"
+                f"（{quiet_rule.get('start', '22:00')}-{quiet_rule.get('end', '08:00')}），跳过本轮生成"
+            )
+            print("PRICE_CHECK_DONE: checked=0 alerts_created=0")
+            return 0
+
         for watch in watches:
             # 读商品当前价
-            from sqlalchemy import select as s
-
             product_result = await session.execute(
-                s(ProductInfoMySQL).where(
+                select(ProductInfoMySQL).where(
                     ProductInfoMySQL.product_id == watch.product_id,
                     ProductInfoMySQL.is_deleted == 0,
                 )
@@ -61,6 +95,20 @@ async def main() -> int:
                 continue
             if watch.status == "triggered":
                 continue  # 已触发过，等用户重新调整目标价
+
+            # P2 规则：单用户每日上限
+            recent = await repository.list_alerts(watch.user_id, limit=50)
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            sent_today = sum(
+                1
+                for a in recent
+                if a.get("created_at")
+                and datetime.fromtimestamp(a["created_at"] / 1000).strftime("%Y-%m-%d")
+                == today_str
+            )
+            if sent_today >= int(global_rule.get("max_per_day", 3)):
+                print(f"用户 {watch.user_id} 今日提醒已达上限，跳过")
+                continue
 
             reason = (
                 f"商品「{product.title}」当前到手价 {current} 元，"

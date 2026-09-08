@@ -28,6 +28,7 @@ async def lifespan(app: FastAPI):
 
     # 自动建表：显式导入全部模型模块，确保 metadata 注册完整后再 create_all
     # （仅靠业务模块的 import 链隐式注册，重构时容易漏表）
+    import app.models.alert_rule  # noqa: F401
     import app.models.product  # noqa: F401
     import app.models.shopping  # noqa: F401
     import app.models.user  # noqa: F401

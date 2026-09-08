@@ -7,6 +7,9 @@ import { Database, Loader2, RefreshCw, Save, Search, Trash2, X } from "lucide-re
 import { useCallback, useEffect, useState } from "react";
 import {
   deleteAdminProduct,
+  fetchAlertRules,
+  putAlertRule,
+  type AlertRule,
   fetchAdminProducts,
   fetchProductReviews,
   patchAdminProduct,
@@ -26,6 +29,8 @@ export function AdminConsole() {
   const [editing, setEditing] = useState<AdminProduct | null>(null);
   const [reviewsFor, setReviewsFor] = useState<string | null>(null);
   const [rebuilding, setRebuilding] = useState(false);
+  const [tab, setTab] = useState<"products" | "rules">("products");
+  const [rules, setRules] = useState<AlertRule[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -45,9 +50,30 @@ export function AdminConsole() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (tab === "rules") {
+      fetchAlertRules()
+        .then((d) => setRules(d.items ?? []))
+        .catch(() => setRules([]));
+    }
+  }, [tab]);
+
   const flash = (text: string) => {
     setNotice(text);
     window.setTimeout(() => setNotice(""), 4000);
+  };
+
+  /** 保存提醒规则：乐观更新本地，失败时回滚并提示 */
+  const saveRule = async (next: AlertRule) => {
+    const previous = rules;
+    setRules((cur) => cur.map((r) => (r.rule_key === next.rule_key ? next : r)));
+    try {
+      await putAlertRule(next);
+      flash("规则已保存（下次价格检查生效）");
+    } catch (err) {
+      setRules(previous);
+      flash(`规则保存失败：${err instanceof Error ? err.message : "请重试"}`);
+    }
   };
 
   const handleRebuild = async () => {
@@ -113,6 +139,32 @@ export function AdminConsole() {
           </div>
         )}
 
+        {/* Tab 切换：商品管理 / 提醒规则（P2） */}
+        <div className="mb-3 flex gap-1.5">
+          <button
+            type="button"
+            onClick={() => setTab("products")}
+            className={
+              tab === "products"
+                ? "rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-white"
+                : "rounded-lg border border-line px-3 py-1.5 text-sm text-ink/60 hover:border-primary/40"
+            }
+          >
+            商品管理
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("rules")}
+            className={
+              tab === "rules"
+                ? "rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-white"
+                : "rounded-lg border border-line px-3 py-1.5 text-sm text-ink/60 hover:border-primary/40"
+            }
+          >
+            提醒规则
+          </button>
+        </div>
+
         {/* 搜索栏 */}
         <div className="mb-3 flex gap-2">
           <div className="relative flex-1">
@@ -131,6 +183,72 @@ export function AdminConsole() {
             />
           </div>
         </div>
+
+        {/* 提醒规则面板（P2） */}
+        {tab === "rules" && (
+          <div className="mb-4 rounded-xl2 border border-line bg-white p-4 shadow-card">
+            <div className="mb-3 text-sm font-semibold text-ink">降价提醒规则</div>
+            <div className="space-y-3">
+              {rules.map((rule) => (
+                <div
+                  key={rule.rule_key}
+                  className="flex flex-wrap items-center gap-3 rounded-lg bg-subtle px-3 py-2.5 text-sm"
+                >
+                  <span className="font-mono text-xs text-ink/60">{rule.rule_key}</span>
+                  <span className="min-w-40 flex-1 text-xs text-ink/60">{rule.description}</span>
+                  {rule.rule_key === "quiet_hours" ? (
+                    <label className="flex items-center gap-1 text-xs">
+                      静默时段
+                      <input
+                        type="time"
+                        defaultValue={rule.start ?? "22:00"}
+                        onBlur={(e) => saveRule({ ...rule, start: e.target.value })}
+                        className="rounded border border-line bg-white px-1.5 py-0.5"
+                        aria-label="静默开始时间"
+                      />
+                      至
+                      <input
+                        type="time"
+                        defaultValue={rule.end ?? "08:00"}
+                        onBlur={(e) => saveRule({ ...rule, end: e.target.value })}
+                        className="rounded border border-line bg-white px-1.5 py-0.5"
+                        aria-label="静默结束时间"
+                      />
+                    </label>
+                  ) : (
+                    <>
+                      <label className="flex items-center gap-1.5 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={rule.enabled ?? true}
+                          onChange={(e) => saveRule({ ...rule, enabled: e.target.checked })}
+                        />
+                        启用
+                      </label>
+                      <label className="flex items-center gap-1 text-xs">
+                        每日上限
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          defaultValue={rule.max_per_day ?? 3}
+                          onBlur={(e) => {
+                            const value = Math.max(1, Math.min(20, Number(e.target.value) || 3));
+                            saveRule({ ...rule, max_per_day: value });
+                          }}
+                          className="w-14 rounded border border-line bg-white px-1.5 py-0.5"
+                        />
+                      </label>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] text-ink/40">
+              规则保存后由价格检查脚本下次运行时读取生效（服务器 crontab 每小时执行）。
+            </p>
+          </div>
+        )}
 
         {/* 商品表 */}
         <div className="overflow-x-auto rounded-xl2 border border-line bg-white shadow-card">

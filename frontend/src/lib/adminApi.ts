@@ -87,3 +87,26 @@ export function rebuildIndex(): Promise<{
 }> {
   return requestJson("/api/admin/rebuild-index", { method: "POST" });
 }
+
+// 后端 list_rules 将 value_json 扁平化进顶层：global → enabled/max_per_day，quiet_hours → start/end
+export type AlertRule = {
+  rule_key: string;
+  description?: string | null;
+  enabled?: boolean;
+  max_per_day?: number;
+  start?: string;
+  end?: string;
+};
+
+export function fetchAlertRules(): Promise<{ items: AlertRule[] }> {
+  return requestJson("/api/admin/alert-rules");
+}
+
+export function putAlertRule(rule: AlertRule): Promise<{ ok: boolean }> {
+  // 后端契约：{rule_key, description, value_json}——其余扁平字段属于规则参数
+  const { rule_key, description, ...value_json } = rule;
+  return requestJson(`/api/admin/alert-rules/${rule_key}`, {
+    method: "PUT",
+    body: JSON.stringify({ rule_key, description, value_json }),
+  });
+}

@@ -407,6 +407,51 @@ async def bundle_recommend(
     return bundle
 
 
+# ---------- 购物车模拟（二期 P2 / PRD 4.4） ----------
+
+
+class CartItemSchema(BaseModel):
+    product_id: str = Field(min_length=1, max_length=64)
+    quantity: int = Field(default=1, ge=1, le=99)
+
+
+class CartSimulateSchema(BaseModel):
+    items: list[CartItemSchema] = Field(min_length=1, max_length=20)
+    coupon_code: str | None = Field(default=None, max_length=32)
+
+
+@shopping_router.post("/cart/simulate", dependencies=[Depends(get_user_scope)])
+async def cart_simulate(
+    body: CartSimulateSchema,
+    service: Annotated[ShoppingAgentService, Depends(get_shopping_service)],
+):
+    """估算购物车组合价格与优惠效果（满减 + 优惠券叠加）"""
+
+    # 商品合法性校验并补充名称/品类（规则引擎需要品类做满减）
+    ids = [item.product_id for item in body.items]
+    rows = await service.product_repository.get_by_product_ids(ids)
+    row_map = {row.product_id: row for row in rows}
+    if len(row_map) != len(set(ids)):
+        raise HTTPException(status_code=404, detail="部分商品不存在或已下架")
+
+    items = [
+        {
+            "product_id": item.product_id,
+            "title": row_map[item.product_id].title,
+            "price": float(row_map[item.product_id].promotion_price
+                           or row_map[item.product_id].price),
+            "quantity": item.quantity,
+            "category_name": row_map[item.product_id].category_name,
+        }
+        for item in body.items
+    ]
+
+    from app.services.cart_service import simulate
+
+    result = simulate(items, coupon_code=body.coupon_code)
+    return {**result, "items": items}
+
+
 # ---------- 会话总结（二期 S1-3，PRD 4.3） ----------
 
 
