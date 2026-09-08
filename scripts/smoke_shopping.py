@@ -6,7 +6,11 @@
   2. 模糊需求 → 必须出现 clarification 追问
 另验证 /feedback 落库。退出码非 0 表示链路异常。
 
-用法：API_TOKEN=xxx uv run python scripts/smoke_shopping.py [--host http://127.0.0.1:8000]
+用法（服务器上，默认 host 是服务器本地 uvicorn）：
+  API_TOKEN=xxx uv run python scripts/smoke_shopping.py
+本机直连生产：
+  API_TOKEN=xxx uv run python scripts/smoke_shopping.py --host http://服务器IP
+注意：本机不带令牌直跑会全部失败（连不上/401），不代表线上故障。
 """
 
 import argparse

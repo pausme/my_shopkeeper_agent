@@ -236,3 +236,34 @@ cd ~/shopkeeper-agent && API_TOKEN=$(grep ^API_TOKEN= .env | cut -d= -f2) uv run
 - 同步时会排除 `.env`、`docker/.env`、`docker/embedding`（模型）、`.venv`、`logs`，服务器上的密钥与模型不会被覆盖；
 - 每次部署都会重启后端（`systemctl restart shopkeeper`），正在执行的导购会话会被中断；
 - 种子数据不会被自动重建；修改 `scripts/seed_shopping_data.py` 后需手动执行步骤 5。
+
+## 部署后业务测试（怎么跑 / 别误读）
+
+deploy 流水线的 `smoke-eval` job 在部署完成后自动跑三层业务测试，job 绿勾即全部通过：
+
+| 层 | 脚本/套件 | 说明 |
+| --- | --- | --- |
+| 系统回归 | `scripts/regression_test.py` | 24 项断言（认证/鉴权/品型一致/对比同源/会话 CRUD 等），SSH 到服务器执行 |
+| Playwright E2E | `frontend/e2e/` | 在 Runner 上直打生产站点，1024/1440/1920 三宽度 |
+| 导购冒烟评测 | `scripts/smoke_shopping.py` | 3 用例（推荐/追问/反馈），服务器端脱钩运行，CI 轮询结果文件 |
+
+**常见误读**：这两个 Python 脚本默认打 `http://127.0.0.1:8000` 并要求 `API_TOKEN` 环境变量——这套默认值是给**服务器环境**用的（服务器上 uvicorn 就在 8000，令牌在 `~/shopkeeper-agent/.env`）。**在自己电脑上直接 `uv run python scripts/regression_test.py` 会全部 FAIL**（本机既没有 8000 服务也没有令牌），这是环境问题，不代表线上故障。
+
+手动验证的正确跑法（二选一，把 `服务器IP` 换成实际地址）：
+
+```bash
+# ① 服务器上跑（与 CI 完全一致）
+ssh ubuntu@服务器IP 'cd ~/shopkeeper-agent && API_TOKEN=$(grep ^API_TOKEN= .env | cut -d= -f2) uv run python scripts/regression_test.py'
+```
+
+```bash
+# ② 本机跑、打生产（REGRESSION_HOST 走 nginx 80；令牌经 SSH 现取，不落本地文件）
+REGRESSION_HOST=http://服务器IP API_TOKEN=$(ssh ubuntu@服务器IP 'grep ^API_TOKEN= ~/shopkeeper-agent/.env | cut -d= -f2') uv run python scripts/regression_test.py
+```
+
+`smoke_shopping.py` 同理：`--host http://服务器IP` + `API_TOKEN`。
+
+另外两个容易误读的点：
+
+- GitHub Actions 页面上 run 的橙色 **warning** 注解（Node.js 20 deprecated）是 Actions 运行时的提示，与测试结果无关；测试结论以 `smoke-eval` job 的绿勾为准。
+- 导购 SSE 接口有限流（query 10/min），本机短时间内反复全量跑可能撞限流出现零星 FAIL；服务器本机（回环地址）豁免，隔一分钟再跑即可。

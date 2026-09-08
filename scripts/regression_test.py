@@ -3,10 +3,13 @@
 
 覆盖：认证、鉴权越权、SSE 追问/推荐、品型一致性、预算边界、
 对比同源、文案不含后端 ID、会话 CRUD 与 stop 接口。
-全部走线上接口（127.0.0.1:8000），需 API_TOKEN 环境变量。
 退出码非 0 表示回归失败，CI 部署后必跑。
 
-用法：API_TOKEN=xxx uv run python scripts/regression_test.py
+用法（服务器上，或经 SSH 在服务器执行，与 CI 一致）：
+  API_TOKEN=xxx uv run python scripts/regression_test.py
+本机直连生产（默认 host 127.0.0.1:8000 是服务器本地 uvicorn，本机没有）：
+  REGRESSION_HOST=http://服务器IP API_TOKEN=xxx uv run python scripts/regression_test.py
+注意：本机不带这两个环境变量直接跑，所有用例必然失败，不代表线上故障。
 """
 
 import json
