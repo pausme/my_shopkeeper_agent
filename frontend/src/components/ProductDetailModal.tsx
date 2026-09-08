@@ -13,9 +13,17 @@ type ProductDetailModalProps = {
   /** findings #21：详情页决策下一步 */
   onCompare?: (productId: string) => void;
   onAsk?: (productId: string, title: string) => void;
+  /** S3-5：查看搭配购买方案 */
+  onShowBundle?: (productId: string) => void;
 };
 
-export function ProductDetailModal({ product, onClose, onCompare, onAsk }: ProductDetailModalProps) {
+export function ProductDetailModal({
+  product,
+  onClose,
+  onCompare,
+  onAsk,
+  onShowBundle,
+}: ProductDetailModalProps) {
   const [summary, setSummary] = useState<ProductSummary | null>(null);
   const [error, setError] = useState("");
 
@@ -175,6 +183,15 @@ export function ProductDetailModal({ product, onClose, onCompare, onAsk }: Produ
           >
             复制名称
           </button>
+          {onShowBundle && (
+            <button
+              type="button"
+              onClick={() => onShowBundle(product.product_id)}
+              className="rounded-md border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/5"
+            >
+              查看搭配购
+            </button>
+          )}
           {summary && (
             <span className="ml-auto self-center text-[11px] text-ink/40">
               演示数据 · 样本 {summary.review_count ?? 0} 条

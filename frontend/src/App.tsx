@@ -18,6 +18,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AdminConsole } from "./components/AdminConsole";
 import { AuthDialog } from "./components/AuthDialog";
+import { BundleModal } from "./components/BundleModal";
 import { PreferenceCard, SessionSummaryCard, usePreferences } from "./components/Phase2Cards";
 import { Composer } from "./components/Composer";
 import { ComparisonTable } from "./components/ComparisonTable";
@@ -92,6 +93,7 @@ export default function App() {
   const [jwt, setJwtState] = useState(() => getJwt());
   const [username, setUsernameState] = useState(() => getUsername());
   const [detailProduct, setDetailProduct] = useState<RecommendedProduct | null>(null);
+  const [bundleProduct, setBundleProduct] = useState<RecommendedProduct | null>(null);
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [sessionLoadError, setSessionLoadError] = useState("");
   // 二期 S2：已关注商品 ID 集合
@@ -567,10 +569,29 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
       {authOpen && (
         <AuthDialog onClose={() => setAuthOpen(false)} onAuthed={handleAuthed} />
       )}
+      {bundleProduct && (
+        <BundleModal
+          product={bundleProduct}
+          onClose={() => setBundleProduct(null)}
+          onFollowUp={(question) => {
+            setBundleProduct(null);
+            void startShoppingQuery(question);
+          }}
+        />
+      )}
       {detailProduct && (
         <ProductDetailModal
           product={detailProduct}
           onClose={() => setDetailProduct(null)}
+          onShowBundle={(productId) => {
+            const target = shoppingMessages
+              .flatMap((m) => m.products ?? [])
+              .find((p) => p.product_id === productId);
+            if (target) {
+              setDetailProduct(null);
+              setBundleProduct(target);
+            }
+          }}
           onCompare={handleCompare}
           onAsk={(productId, title) => {
             const question = `${title}值不值得买？帮我分析下`;

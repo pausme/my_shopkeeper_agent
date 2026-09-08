@@ -158,6 +158,36 @@ export function stopShoppingSession(sessionId: string): void {
   }).catch(() => {});
 }
 
+export type BundleGroup = {
+  type: string;
+  reason: string;
+  products: Array<{
+    product_id: string;
+    title: string;
+    price: number;
+    promotion_price: number | null;
+    rating: number;
+    reason: string;
+  }>;
+};
+
+export function fetchBundleRecommend(
+  productId: string,
+  purchasedProductIds: string[] = [],
+): Promise<{
+  main: { product_id: string; title: string };
+  bundles: BundleGroup[];
+  note?: string;
+}> {
+  return requestJson("/api/shopping/bundles/recommend", {
+    method: "POST",
+    body: JSON.stringify({
+      product_id: productId,
+      purchased_product_ids: purchasedProductIds,
+    }),
+  });
+}
+
 export function fetchWatchlist(): Promise<{
   items: Array<{ watch_id: string; product_id: string; product_title: string | null; target_price: number | null; current_price: number | null; status: string }>;
   recent_alerts: Array<{ alert_id: string; product_id: string; alert_price: number; alert_reason: string | null; alert_status: string }>;
