@@ -72,7 +72,15 @@ function extractConditions(query: string): string[] {
 export default function App() {
   const [view, setView] = useState<"home" | "chat">("home");
   // J3 管理台经 hash 路由挂载：#/admin
-  const isAdminRoute = window.location.hash === "#/admin";
+  // N11.34：hash 路由响应式——此前无 hashchange 监听，进出管理台
+  // 依赖偶发重渲染，"返回导购"落点不可控（曾固定回首页）
+  const [routeHash, setRouteHash] = useState(() => window.location.hash);
+  useEffect(() => {
+    const onHashChange = () => setRouteHash(window.location.hash);
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+  const isAdminRoute = routeHash === "#/admin";
   const [shoppingMessages, setShoppingMessages] = useState<ShoppingMessage[]>([]);
   const [shoppingSessionId, setShoppingSessionId] = useState("");
   const [shoppingClarificationCount, setShoppingClarificationCount] = useState(0);
@@ -172,6 +180,44 @@ export default function App() {
       behavior: "smooth",
     });
   }, [shoppingMessages]);
+
+  // N11.34：进入管理台时记录来源视图与会话 id（管理台期间不刷新则内存态天然保留；
+  // 刷新后凭 sessionStorage + 会话回放恢复，否则回退首页）
+  // 初始就处于管理台（刷新/直链进入）不算"进入"，不覆盖已有来源记录
+  const enteredAdminRef = useRef(isAdminRoute);
+  useEffect(() => {
+    if (isAdminRoute) {
+      if (!enteredAdminRef.current) {
+        enteredAdminRef.current = true;
+        try {
+          sessionStorage.setItem(
+            "shopkeeper.adminOrigin",
+            JSON.stringify({ view, session_id: shoppingSessionId }),
+          );
+        } catch {
+          // 私有模式等写入失败时，返回导购回退到首页
+        }
+      }
+      return;
+    }
+    enteredAdminRef.current = false;
+
+    // 离开管理台返回导购：恢复来源上下文
+    if (routeHash !== "#/") return;
+    let origin: { view?: string; session_id?: string } = {};
+    try {
+      origin = JSON.parse(sessionStorage.getItem("shopkeeper.adminOrigin") ?? "{}");
+    } catch {
+      origin = {};
+    }
+    sessionStorage.removeItem("shopkeeper.adminOrigin");
+    if (origin.view === "chat" && origin.session_id && shoppingMessages.length === 0) {
+      // 管理台期间刷新过（内存会话已丢）：从服务端回放原会话
+      void loadShoppingSession(origin.session_id);
+    }
+    // 未刷新的场景 view/messages 仍在内存，无需处理；来源是首页则保持首页
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdminRoute]);
 
   const patchLastShoppingAssistant = (
     updater: (message: ShoppingMessage) => ShoppingMessage,
