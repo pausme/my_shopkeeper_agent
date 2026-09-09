@@ -87,8 +87,8 @@ export function ProductCard({
       ref={rootRef}
       className="flex gap-4 rounded-xl2 border border-line bg-white p-4 shadow-card transition hover:border-primary/40"
     >
-      {/* 商品图（N4.1/N11.10）：优先 image_url 主图，缺失/失败回退品类占位 */}
-      <div className="grid h-24 w-24 shrink-0 place-items-center overflow-hidden rounded-lg bg-gradient-to-br from-primary/10 to-primary/5">
+      {/* 商品图（N4.1/N11.10/N12.6：112×112）：优先 image_url 主图，缺失/失败回退品类占位 */}
+      <div className="grid h-28 w-28 shrink-0 place-items-center overflow-hidden rounded-lg bg-soft">
         {showImage ? (
           <img
             src={product.image_url!}
@@ -133,9 +133,9 @@ export function ProductCard({
               {product.title}
             </button>
           </div>
-          {/* 价格区（N4.2） */}
+          {/* 价格区（N4.2/N12.6：到手价 22px tabular-nums） */}
           <div className="shrink-0 text-right">
-            <div className="text-lg font-bold leading-6 text-price">¥{price}</div>
+            <div className="text-[22px] font-bold leading-7 tabular-nums text-price">¥{price}</div>
             {hasPromo && (
               <div className="text-[11px] leading-4 text-ink/40">
                 <span className="mr-1 line-through">¥{product.price}</span>
@@ -163,7 +163,19 @@ export function ProductCard({
           </span>
         </div>
 
-        {/* 风险标签（N4.5） */}
+        {/* 推荐理由 bullets（N4.6/N12.6：先理由后风险） */}
+        {bullets.length > 0 && (
+          <ul className="mt-2 space-y-1">
+            {bullets.map((bullet, index) => (
+              <li key={index} className="flex items-start gap-1.5 text-xs leading-5 text-ink/75">
+                <Check className="mt-1 h-3 w-3 shrink-0 text-good" aria-hidden="true" />
+                <span className="min-w-0">{bullet}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* 风险标签（N4.5/N12.6：图标 + 文字，最多 2 个） */}
         {riskTags.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
             {riskTags.map((tag) => (
@@ -178,18 +190,6 @@ export function ProductCard({
           </div>
         )}
 
-        {/* 推荐理由 bullets（N4.6） */}
-        {bullets.length > 0 && (
-          <ul className="mt-2 space-y-1">
-            {bullets.map((bullet, index) => (
-              <li key={index} className="flex items-start gap-1.5 text-xs leading-5 text-ink/75">
-                <Check className="mt-1 h-3 w-3 shrink-0 text-good" aria-hidden="true" />
-                <span className="min-w-0">{bullet}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-
         {/* CTA 区（N4.7） */}
         <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-line pt-2.5">
           <button
@@ -198,7 +198,7 @@ export function ProductCard({
               track("detail");
               onDetail?.(product.product_id);
             }}
-            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-primary-dark"
+            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-primary-dark active:scale-[0.98]"
           >
             <BookOpenCheck className="h-3 w-3" aria-hidden="true" />
             查看详情

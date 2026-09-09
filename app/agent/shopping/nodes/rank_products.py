@@ -76,11 +76,20 @@ async def rank_products(
         )
         explicit = set(explicit_ids)
 
+        # N11.32 补强：追问应答轮（query 是"通用/跳过"这类短答）时，LLM 改写
+        # 可能丢失品型词——回退用最近一条用户原始提问兜底锁定品型
+        # （负向放宽表述仍优先：query 在匹配文本最前，"没有X"不会被历史解锁）
+        last_user_query = ""
+        for message in reversed(state.get("history") or []):
+            if message.get("role") == "user" and str(message.get("content", "")).strip():
+                last_user_query = str(message["content"])
+                break
+
         # 品型硬约束（findings #24）：用户点名具体品型（如"空气炸锅"）时，
         # 只保留标题/属性命中该品型的商品，宁缺毋滥——绝不用相邻品类凑数
         type_keyword = (
             None if explicit else match_product_type(
-                state.get("query"), state.get("rewritten_query")
+                state.get("query"), state.get("rewritten_query"), last_user_query
             )
         )
         insufficient_note = ""

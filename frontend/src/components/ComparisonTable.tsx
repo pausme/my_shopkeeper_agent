@@ -104,7 +104,7 @@ export function ComparisonTable({ headers, rows, warning, conclusion, onDimGroup
       </div>
 
       {conclusion && (
-        <div className="border-b border-line bg-primary/5 px-4 py-2.5 text-xs leading-5 text-primary">
+        <div className="border-b border-line bg-primary-soft px-4 py-2.5 text-xs leading-5 text-primary">
           {conclusion}
         </div>
       )}

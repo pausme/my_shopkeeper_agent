@@ -86,6 +86,31 @@ def test_rank_returns_empty_when_type_has_no_stock():
     assert "没有拿相近品类凑数" in result["insufficient_note"]
 
 
+def test_rank_locks_type_from_history_when_rewrite_drops_it():
+    """N11.32 补强：追问应答轮（query="通用"）改写丢失品型词时，
+    用最近一条用户原始提问兜底锁定品型，不得推荐相邻品类"""
+
+    from app.agent.shopping.nodes.rank_products import rank_products
+
+    state = {
+        "query": "通用",
+        "rewritten_query": "数码配件，通勤办公，300 元预算，多设备使用",
+        "history": [
+            {"role": "user", "content": "想买一个蓝牙耳机，预算300以内，通勤使用，优先降噪"},
+            {"role": "assistant", "content": "数码配件主要搭配什么设备使用？"},
+        ],
+        "candidate_products": [
+            candidate("P0003", "绿联 拓展坞 9合1", 199, category="数码配件"),
+            candidate("P0004", "安克 充电器 65W", 169, category="数码配件"),
+        ],
+        "risk_summary": {},
+        "purchase_slots": {"category": "数码配件", "budget_max": 300},
+    }
+    result = asyncio.run(rank_products(state, _Runtime()))
+    assert result["ranked_products"] == []
+    assert "暂无「耳机」" in result["insufficient_note"]
+
+
 def test_rank_keeps_real_type_products():
     from app.agent.shopping.nodes.rank_products import rank_products
 

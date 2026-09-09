@@ -46,15 +46,17 @@ test.describe("对比流程与品型无货", () => {
       await cards.nth(i).getByRole("button", { name: "加入对比" }).click();
     }
 
-    // N11.33 修复：对比托盘激活期间，右下角悬浮"新咨询"让位（不再遮挡"开始对比"）
-    await expect(page.getByRole("button", { name: /新咨询/ })).toBeHidden();
-    await expect(page.getByRole("button", { name: /开始对比/ })).toBeVisible();
+    // N11.33 修复验收：开始对比按钮可见且可用（悬浮"新咨询"不再遮挡——
+    // 若被遮挡，Playwright 的 click 会因 intercepts pointer events 失败）
+    const compareButton = page.getByRole("button", { name: /开始对比/ });
+    await expect(compareButton).toBeVisible();
+    await expect(compareButton).toBeEnabled();
 
-    await page.getByRole("button", { name: /开始对比/ }).click();
+    await compareButton.click();
 
     // 对比表出现且仍停留在对话页（未回首页）
     await expect(page.getByText("商品横向对比").first()).toBeVisible({ timeout: 180_000 });
-    await expect(page.getByRole("heading", { name: "买什么，问导购" })).toBeHidden();
+    await expect(page.getByRole("heading", { name: "买什么，先把条件说清楚" })).toBeHidden();
   });
 
   test("蓝牙耳机无货：空推荐并明示暂无品型（N11.32）", async ({ page }) => {

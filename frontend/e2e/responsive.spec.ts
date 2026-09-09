@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
 test.describe("响应式视觉", () => {
   test("首页无横向溢出并截图", async ({ page }, testInfo) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "买什么，问导购" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "买什么，先把条件说清楚" })).toBeVisible();
 
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,

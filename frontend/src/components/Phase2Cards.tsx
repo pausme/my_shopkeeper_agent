@@ -1,8 +1,9 @@
 /**
- * 二期 S1 前端：偏好中心与会话总结卡
+ * 二期 S1 前端：偏好读取 Hook 与会话总结卡（N12.11 统一分组样式）
+ * 偏好展示已并入决策侧栏（DecisionSidebar）；本文件保留 usePreferences 与总结卡
  */
 import { useCallback, useEffect, useState } from "react";
-import { BookmarkCheck, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
+import { RefreshCw, Sparkles, X } from "lucide-react";
 import { API_BASE_URL, authHeaders } from "../lib/agentApiShared";
 
 type Preference = {
@@ -12,13 +13,16 @@ type Preference = {
   updated_at: number | null;
 };
 
+export type { Preference };
+
 type SessionSummary = {
   summary_text: string;
   unresolved_questions: string[];
+  /** N11.29：后端读出时已解析为商品名称（缺失退化"已关注商品N"） */
   focus_products: string[];
 };
 
-/** 偏好卡（会话页侧栏/首页入口均可挂） */
+/** 偏好读取（登录后启用；决策侧栏消费） */
 export function usePreferences(enabled: boolean) {
   const [preferences, setPreferences] = useState<Preference[]>([]);
   const [loading, setLoading] = useState(false);
@@ -48,60 +52,7 @@ export function usePreferences(enabled: boolean) {
   return { preferences, loading, reload, remove };
 }
 
-/** 我的偏好卡（N7.2 会话页 / S1-4） */
-export function PreferenceCard({
-  preferences,
-  onDelete,
-}: {
-  preferences: Preference[];
-  onDelete: (key: string) => void;
-}) {
-  if (preferences.length === 0) return null;
-
-  return (
-    <section className="rounded-xl2 border border-line bg-white p-4 shadow-card">
-      <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-ink">
-        <BookmarkCheck className="h-4 w-4 text-primary" aria-hidden="true" />
-        我的偏好
-      </div>
-      <div className="space-y-1.5">
-        {preferences.map((pref) => (
-          <div
-            key={pref.preference_key}
-            className="flex items-center justify-between gap-2 rounded-lg bg-subtle px-3 py-2"
-          >
-            <div className="min-w-0">
-              <span className="text-xs font-semibold text-ink/75">{pref.preference_key}</span>
-              <span className="ml-2 text-xs text-ink/70">{pref.preference_value}</span>
-            </div>
-            <div className="flex shrink-0 items-center gap-1.5">
-              <span
-                className={
-                  pref.source === "explicit"
-                    ? "rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary"
-                    : "rounded bg-subtle px-1.5 py-0.5 text-[10px] text-ink/45"
-                }
-                title={pref.source === "explicit" ? "你手动设置的偏好" : "根据你的咨询记录推断"}
-              >
-                {pref.source === "explicit" ? "手动" : "推断"}
-              </span>
-              <button
-                type="button"
-                onClick={() => onDelete(pref.preference_key)}
-                aria-label={`删除偏好 ${pref.preference_key}`}
-                className="rounded p-1 text-ink/30 transition hover:bg-risk/10 hover:text-risk"
-              >
-                <Trash2 className="h-3 w-3" aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-/** 会话总结卡（S1-5 复访入口） */
+/** 会话总结卡（S1-5 复访入口 / N12.11 统一卡片分组样式） */
 export function SessionSummaryCard({
   summary,
   onFollowUp,
@@ -112,7 +63,7 @@ export function SessionSummaryCard({
   onClose: () => void;
 }) {
   return (
-    <section className="rounded-xl2 border border-primary/25 bg-primary/5 p-4 shadow-card">
+    <section className="rounded-xl2 border border-primary/25 bg-primary-soft/60 p-4 shadow-card">
       <div className="mb-2 flex items-center justify-between">
         <div className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary">
           <Sparkles className="h-4 w-4" aria-hidden="true" />
@@ -122,7 +73,7 @@ export function SessionSummaryCard({
           type="button"
           onClick={onClose}
           aria-label="关闭总结"
-          className="text-ink/40 transition hover:text-ink"
+          className="grid h-7 w-7 place-items-center rounded-full text-ink/40 transition hover:bg-white hover:text-ink"
         >
           <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
@@ -131,7 +82,9 @@ export function SessionSummaryCard({
 
       {summary.unresolved_questions.length > 0 && (
         <div className="mt-3">
-          <div className="mb-1 text-xs font-medium text-ink/50">上次还没确认的问题</div>
+          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-ink/45">
+            上次还没确认的问题
+          </div>
           <div className="flex flex-wrap gap-1.5">
             {summary.unresolved_questions.map((question) => (
               <button
@@ -147,6 +100,7 @@ export function SessionSummaryCard({
         </div>
       )}
 
+      {/* N11.29：只展示商品名称，不出现后端 ID */}
       {summary.focus_products.length > 0 && (
         <div className="mt-2 text-[11px] text-ink/45">
           上次关注：{summary.focus_products.join("、")}
@@ -156,7 +110,7 @@ export function SessionSummaryCard({
       <button
         type="button"
         onClick={() => onFollowUp("继续上次的推荐，有没有更便宜的？")}
-        className="mt-3 inline-flex items-center gap-1 rounded-full border border-primary/40 bg-white px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/5"
+        className="mt-3 inline-flex items-center gap-1 rounded-full border border-primary/40 bg-white px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary-soft active:scale-[0.98]"
       >
         <RefreshCw className="h-3 w-3" aria-hidden="true" />
         继续上次的咨询

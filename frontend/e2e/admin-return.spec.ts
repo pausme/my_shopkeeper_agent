@@ -38,7 +38,7 @@ test.describe("管理台返回上下文", () => {
 
   test("首页进入管理台：返回回首页", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "买什么，问导购" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "买什么，先把条件说清楚" })).toBeVisible();
 
     await page.evaluate(() => {
       window.location.hash = "#/admin";
@@ -46,7 +46,7 @@ test.describe("管理台返回上下文", () => {
     await expect(page.getByText("商品数据管理台").first()).toBeVisible({ timeout: 15_000 });
 
     await page.getByRole("link", { name: "返回导购" }).click();
-    await expect(page.getByRole("heading", { name: "买什么，问导购" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "买什么，先把条件说清楚" })).toBeVisible({ timeout: 15_000 });
   });
 
   test("会话页进入管理台：返回恢复原会话（不刷新）", async ({ page }) => {
@@ -61,7 +61,7 @@ test.describe("管理台返回上下文", () => {
     await page.getByRole("link", { name: "返回导购" }).click();
     // 回到原会话页：推荐卡仍在，未回首页
     await expect(page.locator("article").first()).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole("heading", { name: "买什么，问导购" })).toBeHidden();
+    await expect(page.getByRole("heading", { name: "买什么，先把条件说清楚" })).toBeHidden();
   });
 
   test("会话页进入管理台并刷新：返回从服务端回放会话", async ({ page }) => {
@@ -79,6 +79,6 @@ test.describe("管理台返回上下文", () => {
 
     await page.getByRole("link", { name: "返回导购" }).click();
     await expect(page.locator("article").first()).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByRole("heading", { name: "买什么，问导购" })).toBeHidden();
+    await expect(page.getByRole("heading", { name: "买什么，先把条件说清楚" })).toBeHidden();
   });
 });

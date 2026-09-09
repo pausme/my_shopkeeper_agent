@@ -9,7 +9,7 @@ import { expect, test } from "@playwright/test";
 test.describe("首页", () => {
   test("首页仅一个输入入口，无底部 composer", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "买什么，问导购" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "买什么，先把条件说清楚" })).toBeVisible();
 
     // 底部对话输入栏（textarea）不应存在于首页
     const textareas = page.locator("textarea");

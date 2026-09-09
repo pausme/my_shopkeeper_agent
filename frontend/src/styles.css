@@ -1,6 +1,7 @@
 /**
  * 全局样式入口
- * C 端电商视觉：浅灰分层背景，无装饰纹理（N2.5）
+ * 「购买决策台」视觉体系（N12.1/N12.2/N12.13/N12.14）：
+ * 浅色工作区、深桉树绿主色、键盘焦点环、克制动效 + 减少动效支持
  */
 @tailwind base;
 @tailwind components;
@@ -8,6 +9,11 @@
 
 :root {
     color-scheme: light;
+    /* Token 的 CSS 变量形态（供全局样式用；组件一律用 tailwind 类） */
+    --ui-bg: #f3f6f4;
+    --ui-border: #d7e0db;
+    --ui-focus: #2f8f72;
+    --ui-text: #18221f;
     font-synthesis: none;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
@@ -26,43 +32,66 @@ body,
 
 body {
     margin: 0;
-    background: #f5f6f8;
+    background: var(--ui-bg);
+    /* N12.2 排版基线：正文 15px / 1.65，组件内按层级缩放 */
+    font-size: 15px;
+    line-height: 1.65;
     overflow: hidden;
 }
 
 button,
-textarea {
+textarea,
+input {
     font: inherit;
 }
 
 ::selection {
-    background: rgba(37, 99, 235, 0.18);
+    background: rgba(31, 93, 75, 0.16);
 }
 
-/* 细滚动条 */
+/* N12.13 键盘焦点环：不依赖颜色区分状态 */
+:focus-visible {
+    outline: 2px solid var(--ui-focus);
+    outline-offset: 2px;
+}
+
+/* 细滚动条（绿灰系） */
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-    background: #d1d5db;
+    background: #c9d4ce;
     border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #b4c2bb;
 }
 ::-webkit-scrollbar-track {
     background: transparent;
 }
 
-/* 骨架屏呼吸动画（N7.5） */
+/* 骨架屏呼吸动画（N7.5，与最终卡片结构一致） */
 @keyframes shimmer {
     0% { background-position: -400px 0; }
     100% { background-position: 400px 0; }
 }
 .shimmer {
-    background: linear-gradient(90deg, #f1f2f4 25%, #e8eaed 50%, #f1f2f4 75%);
+    background: linear-gradient(90deg, #edf1ee 25%, #e2e9e5 50%, #edf1ee 75%);
     background-size: 800px 100%;
     animation: shimmer 1.4s infinite linear;
 }
 
+/* N12.14 抽屉动效：右进 200ms ease-out（关闭由组件卸载，无需退出动画） */
+@keyframes drawer-in {
+    from { transform: translateX(16px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+.drawer-panel {
+    animation: drawer-in 200ms ease-out;
+}
+
+/* 减少动效：关闭位移与 shimmer，保留内容与状态变化（N12.14） */
 @media (prefers-reduced-motion: reduce) {
     *,
     *::before,

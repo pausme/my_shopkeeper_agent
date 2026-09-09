@@ -1,8 +1,8 @@
 /**
- * 聊天输入区组件
- * 处理问题输入、发送和停止当前流式请求
+ * 底部 composer（N12.5 对话页工作区）
+ * 输入框与发送合并为一个固定工作区；停止按钮仅流式期间显示
  */
-import { ArrowUp, Square, WandSparkles, X } from "lucide-react";
+import { ArrowUp, Square, X } from "lucide-react";
 import { FormEvent, KeyboardEvent, useRef } from "react";
 import { cn } from "../lib/format";
 
@@ -42,12 +42,9 @@ export function Composer({
     return (
         <form
             onSubmit={submit}
-            className="border-t border-ink/10 bg-parchment/80 px-4 py-4 backdrop-blur"
+            className="border-t border-line bg-white px-4 py-3 lg:px-8"
         >
-            <div className="mx-auto flex max-w-5xl items-end gap-3 border border-ink/15 bg-white/75 p-2 shadow-panel">
-                <div className="hidden h-11 w-11 shrink-0 place-items-center bg-moss/10 text-moss sm:grid">
-                    <WandSparkles className="h-5 w-5" aria-hidden="true" />
-                </div>
+            <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-xl2 border border-line bg-subtle p-2 shadow-card focus-within:border-primary/50">
                 <textarea
                     ref={textareaRef}
                     value={value}
@@ -56,7 +53,8 @@ export function Composer({
                     onChange={(event) => onChange(event.target.value)}
                     onKeyDown={onKeyDown}
                     rows={1}
-                    placeholder={placeholder ?? "问一个电商数据问题..."}
+                    placeholder={placeholder ?? "继续描述你的需求..."}
+                    aria-label="继续提问"
                     className="max-h-36 min-h-11 flex-1 resize-none bg-transparent px-2 py-3 text-[15px] leading-6 text-ink outline-none placeholder:text-ink/35"
                 />
                 {/* findings N11.22：清空按钮 + 临近上限的字数提示 */}
@@ -64,7 +62,7 @@ export function Composer({
                     <button
                         type="button"
                         onClick={() => onChange("")}
-                        className="grid h-7 w-7 shrink-0 place-items-center self-center rounded-full text-ink/35 transition hover:bg-ink/5 hover:text-ink"
+                        className="grid h-7 w-7 shrink-0 place-items-center self-center rounded-full text-ink/35 transition hover:bg-ink/5 hover:text-ink active:scale-[0.98]"
                         title="清空输入"
                         aria-label="清空输入"
                     >
@@ -72,7 +70,7 @@ export function Composer({
                     </button>
                 )}
                 {value.length > 420 && (
-                    <span className="shrink-0 self-center font-mono text-[11px] text-ink/40">
+                    <span className="shrink-0 self-center font-mono text-[11px] tabular-nums text-ink/40">
                         {value.length}/500
                     </span>
                 )}
@@ -81,13 +79,13 @@ export function Composer({
                     onClick={isStreaming ? onStop : undefined}
                     disabled={!isStreaming && disabled}
                     className={cn(
-                        "grid h-11 w-11 shrink-0 place-items-center rounded-full text-white transition focus:outline-none focus:ring-2 focus:ring-moss/40 focus:ring-offset-2",
+                        "grid h-10 w-10 shrink-0 place-items-center rounded-full text-white transition active:scale-[0.98]",
                         isStreaming
-                            ? "bg-tomato hover:bg-tomato/90"
-                            : "bg-ink hover:bg-soot disabled:cursor-not-allowed disabled:bg-ink/25",
+                            ? "bg-risk hover:bg-risk/90"
+                            : "bg-primary hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50",
                     )}
-                    title={isStreaming ? "停止" : "发送"}
-                    aria-label={isStreaming ? "停止" : "发送"}
+                    title={isStreaming ? "停止本次导购" : "发送"}
+                    aria-label={isStreaming ? "停止本次导购" : "发送"}
                 >
                     {isStreaming ? (
                         <Square

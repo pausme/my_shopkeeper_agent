@@ -122,7 +122,7 @@ export function FilterPanel({
             const value = Number(event.target.value);
             onChange({ ...filters, budgetMax: value >= Math.max(priceCeiling, 100) ? null : value });
           }}
-          className="w-full accent-[#2563eb]"
+          className="w-full accent-primary"
         />
       </div>
 
@@ -179,7 +179,7 @@ export function FilterPanel({
             type="checkbox"
             checked={filters.inStockOnly}
             onChange={(event) => onChange({ ...filters, inStockOnly: event.target.checked })}
-            className="accent-[#2563eb]"
+            className="accent-primary"
           />
           只看有货商品
         </label>
@@ -188,7 +188,7 @@ export function FilterPanel({
             type="checkbox"
             checked={filters.excludeRisky}
             onChange={(event) => onChange({ ...filters, excludeRisky: event.target.checked })}
-            className="accent-[#2563eb]"
+            className="accent-primary"
           />
           排除"谨慎购买"商品
         </label>

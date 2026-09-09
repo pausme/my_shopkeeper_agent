@@ -63,13 +63,17 @@ export function BundleModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 bg-ink/40 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label="搭配购买方案"
       onClick={(event) => event.target === event.currentTarget && onClose()}
     >
-      <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-xl2 bg-white p-6 shadow-panel">
+      {/* N12.10 搭配方案抽屉：右侧打开，保持会话上下文 */}
+      <div
+        className="drawer-panel absolute right-0 top-0 h-full w-full max-w-[440px] overflow-y-auto rounded-l-xl3 bg-white px-6 py-5 shadow-drawer"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="mb-4 flex items-start justify-between">
           <div>
             <h3 className="inline-flex items-center gap-1.5 text-base font-semibold text-ink">
@@ -82,7 +86,7 @@ export function BundleModal({
             type="button"
             onClick={onClose}
             aria-label="关闭"
-            className="rounded-full p-1.5 text-ink/45 transition hover:bg-subtle hover:text-ink"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-ink/45 transition hover:bg-soft hover:text-ink active:scale-[0.98]"
           >
             <X className="h-4 w-4" aria-hidden="true" />
           </button>

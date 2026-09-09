@@ -11,7 +11,10 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   timeout: 120_000,
+  // 直打生产：必须单 worker 串行——多文件并行会集中触发导购接口
+  // query 10/min 限流（deploy #70/#71 E2E 失败根因：429）
   fullyParallel: false,
+  workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "line" : "list",
   use: {
@@ -22,8 +25,9 @@ export default defineConfig({
   },
   projects: [
     { name: "desktop-1024", use: { ...devices["Desktop Chrome"], viewport: { width: 1024, height: 800 } } },
+    // N12.15：四档桌面宽度验收（1024/1280/1440/1920）
+    { name: "desktop-1280", use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 } } },
     { name: "desktop-1440", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
-    // N9.1：补齐 1920 宽度（三宽度验收口径）
     { name: "desktop-1920", use: { ...devices["Desktop Chrome"], viewport: { width: 1920, height: 1080 } } },
   ],
 });

@@ -19,7 +19,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AdminConsole } from "./components/AdminConsole";
 import { AuthDialog } from "./components/AuthDialog";
 import { BundleModal } from "./components/BundleModal";
-import { PreferenceCard, SessionSummaryCard, usePreferences } from "./components/Phase2Cards";
+import { DecisionSidebar } from "./components/DecisionSidebar";
+import { SessionSummaryCard, usePreferences } from "./components/Phase2Cards";
 import { Composer } from "./components/Composer";
 import { ComparisonTable } from "./components/ComparisonTable";
 import {
@@ -471,6 +472,13 @@ export default function App() {
   const handleAskAbout = (_productId: string, title: string) => {
     if (isStreaming) return;
     void startShoppingQuery(`${title} 值不值得买？帮我分析一下`);
+  };
+
+  // N12.5 侧栏"重新生成"：重发最近一次用户提问
+  const regenerateLastQuery = () => {
+    if (isStreaming) return;
+    const lastUser = [...shoppingMessages].reverse().find((m) => m.role === "user");
+    if (lastUser?.content) void startShoppingQuery(lastUser.content);
   };
 
   const submitCompare = () => {
@@ -949,7 +957,8 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
           />
         </main>
       ) : (
-        <>
+        <div className="flex min-h-0 flex-1">
+          {/* N12.5 对话流（左）：独立滚动 */}
           <main ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
             {shoppingMessages.length === 0 ? (
               <div className="grid h-full place-items-center gap-3">
@@ -957,13 +966,13 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                 <button
                   type="button"
                   onClick={newConsult}
-                  className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-dark"
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-dark active:scale-[0.98]"
                 >
                   回到首页发起咨询
                 </button>
               </div>
             ) : (
-              <div className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-6 lg:px-8">
+              <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6 lg:px-8">
                 {sessionSummary && (
                   <SessionSummaryCard
                     summary={sessionSummary}
@@ -1203,33 +1212,44 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
             )}
           </main>
 
-          {/* 条件胶囊（N7.2） */}
-          {conditions.length > 0 && (
-            <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-line bg-white px-4 py-1.5 text-[11px] lg:px-8">
-              <span className="text-ink/40">当前条件</span>
-              {conditions.map((condition) => (
-                <span
-                  key={condition}
-                  className="inline-flex items-center gap-1 rounded-full bg-primary/8 px-2 py-0.5 text-primary"
-                >
-                  {condition}
-                </span>
-              ))}
-            </div>
-          )}
-
-        </>
-      )}
-
-      {/* S1-4 偏好卡（登录且有偏好时显示在对话内容底部） */}
-      {view === "chat" && !isStreaming && jwt && preferences.length > 0 && (
-        <div className="mx-auto w-full max-w-4xl px-4 lg:px-8">
-          <PreferenceCard
-            preferences={preferences}
-            onDelete={(key: string) => void removePreference(key)}
-          />
+          {/* N12.5 决策侧栏（右）：独立滚动，与对话流互不影响；xl 起显示 */}
+          <aside
+            className="hidden w-[360px] shrink-0 overflow-y-auto border-l border-line bg-subtle xl:block"
+            aria-label="决策侧栏"
+          >
+            <DecisionSidebar
+              conditions={conditions}
+              preferences={preferences}
+              onDeletePreference={(key: string) => void removePreference(key)}
+              compareIds={compareIds}
+              productTitleById={productTitleById}
+              onRemoveCompare={handleCompare}
+              onSubmitCompare={submitCompare}
+              isStreaming={isStreaming}
+              onStop={stopQuery}
+              onRegenerate={regenerateLastQuery}
+              onNewConsult={newConsult}
+            />
+          </aside>
         </div>
       )}
+
+      {/* 条件胶囊（N7.2；xl 起并入决策侧栏，此处仅窄屏显示） */}
+      {view === "chat" && conditions.length > 0 && (
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-line bg-white px-4 py-1.5 text-[11px] xl:hidden lg:px-8">
+          <span className="text-ink/40">当前条件</span>
+          {conditions.map((condition) => (
+            <span
+              key={condition}
+              className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-primary"
+            >
+              {condition}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* S1-4 偏好卡已并入决策侧栏（N12.5）；窄屏在侧栏折叠时暂不重复展示 */}
 
       {/* 状态栏 + 输入区（N11.1/3：仅对话页显示，首页只有中部搜索一个入口） */}
       {view === "chat" && (
@@ -1239,7 +1259,7 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
               {isStreaming ? `导购运行中 · 已 ${streamElapsed}s` : "就绪"}
             </span>
             {compareIds.length > 0 && (
-              <>
+              <span className="contents xl:hidden">
                 <span className="h-3 w-px bg-line" />
                 <Scale className="h-3 w-3 shrink-0 text-primary" aria-hidden="true" />
                 {compareIds.map((id, index) => {
@@ -1247,7 +1267,7 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                   return (
                     <span
                       key={id}
-                      className="inline-flex max-w-36 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary"
+                      className="inline-flex max-w-36 items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-[11px] text-primary"
                     >
                       <span className="truncate">{productName}</span>
                       <button
@@ -1265,11 +1285,11 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                   type="button"
                   onClick={submitCompare}
                   disabled={compareIds.length < 2 || isStreaming}
-                  className="ml-auto shrink-0 rounded-lg bg-primary px-3 py-1 text-[11px] font-semibold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
+                  className="ml-auto shrink-0 rounded-lg bg-primary px-3 py-1 text-[11px] font-semibold text-white transition hover:bg-primary-dark active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   开始对比（{compareIds.length}/4）
                 </button>
-              </>
+              </span>
             )}
           </div>
           <div ref={composerRef}>
@@ -1286,14 +1306,14 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
         </>
       )}
 
-      {/* 悬浮操作：新咨询 / 清空（在对话视图中）
+      {/* 悬浮操作：新咨询（仅窄屏对话视图；xl 起由决策侧栏承载）
           N11.33 修复：对比托盘有商品时隐藏——悬浮按钮（右下角）与
           "开始对比"按钮物理重叠，曾导致用户点到"新咨询"被带回首页 */}
       {view === "chat" && shoppingMessages.length > 0 && !isStreaming && compareIds.length === 0 && (
         <button
           type="button"
           onClick={newConsult}
-          className="fixed bottom-28 right-6 z-30 inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-panel transition hover:bg-primary-dark"
+          className="fixed bottom-28 right-6 z-30 inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-panel transition hover:bg-primary-dark active:scale-[0.98] xl:hidden"
         >
           <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
           新咨询
