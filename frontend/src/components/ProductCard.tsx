@@ -137,7 +137,7 @@ export function ProductCard({
           <div className="shrink-0 text-right">
             <div className="text-[22px] font-bold leading-7 tabular-nums text-price">¥{price}</div>
             {hasPromo && (
-              <div className="text-[11px] leading-4 text-ink/40">
+              <div className="text-[11px] leading-4 text-muted">
                 <span className="mr-1 line-through">¥{product.price}</span>
                 <span className="rounded bg-price/10 px-1 text-price">省{savePct}%</span>
               </div>
@@ -158,7 +158,7 @@ export function ProductCard({
           {lowSample && (
             <span className="rounded bg-subtle px-1 text-ink/45">评价样本较少</span>
           )}
-          <span className="rounded bg-subtle px-1 text-ink/35" title="当前为演示样本数据，非实时电商数据">
+          <span className="rounded bg-subtle px-1 text-ink/45" title="当前为演示样本数据，非实时电商数据">
             演示数据
           </span>
         </div>
@@ -273,7 +273,7 @@ function FeedbackInline({ onFeedback }: { onFeedback: (type: string) => void }) 
             setDone(false);
             setOpen(false);
           }}
-          className="text-ink/40 underline-offset-2 transition hover:text-ink hover:underline"
+          className="text-muted underline-offset-2 transition hover:text-ink hover:underline"
         >
           撤销
         </button>

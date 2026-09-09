@@ -83,11 +83,15 @@ export function ShoppingHome({ sessions, onSubmit, onOpenSession, isStreaming }:
               onKeyDown={(event) => event.key === "Enter" && submit()}
               placeholder="描述你的购买需求，例如：想买个空气炸锅预算 500..."
               disabled={Boolean(isStreaming)}
+              // N12.21：与后端 500 上限一致，前端提前拦截避免 422（与 composer 同规则）
+              maxLength={500}
               aria-label="描述购买需求"
-              className="h-[88px] min-w-0 flex-1 bg-transparent px-4 text-[15px] outline-none placeholder:text-ink/35 disabled:opacity-60"
+              className="h-[88px] min-w-0 flex-1 bg-transparent px-4 text-[15px] outline-none placeholder:text-ink/45 disabled:opacity-60"
             />
             <div className="flex items-center justify-between gap-3 px-2 pb-1">
-              <span className="text-[11px] text-ink/40">Enter 提交 · 最多 500 字</span>
+              <span className="text-[11px] tabular-nums text-muted">
+                {draft.length > 420 ? `${draft.length}/500` : "Enter 提交 · 最多 500 字"}
+              </span>
               <button
                 type="button"
                 onClick={submit}
@@ -115,7 +119,7 @@ export function ShoppingHome({ sessions, onSubmit, onOpenSession, isStreaming }:
           {/* 最近决策（N3.4/N12.4）：最多 3 条 */}
           {sessions.length > 0 && (
             <section>
-              <h2 className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-ink/40">
+              <h2 className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted">
                 <Clock className="h-3 w-3" aria-hidden="true" />
                 最近决策
               </h2>
@@ -130,7 +134,7 @@ export function ShoppingHome({ sessions, onSubmit, onOpenSession, isStreaming }:
                     <span className="min-w-0 flex-1 truncate text-sm text-ink/80">
                       {displayTitle(session.title, session.last_query)}
                     </span>
-                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-ink/35" aria-hidden="true" />
+                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-ink/45" aria-hidden="true" />
                   </button>
                 ))}
               </div>
@@ -139,7 +143,7 @@ export function ShoppingHome({ sessions, onSubmit, onOpenSession, isStreaming }:
 
           {/* 热门问题：紧凑列表（N12.4 不再使用大面积重复卡片） */}
           <section>
-            <h2 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-ink/40">
+            <h2 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-muted">
               大家都在问
             </h2>
             <ul className="divide-y divide-line rounded-xl2 border border-line bg-white shadow-line">
@@ -163,7 +167,7 @@ export function ShoppingHome({ sessions, onSubmit, onOpenSession, isStreaming }:
 
           {/* 场景快捷入口（N3.2） */}
           <section>
-            <h2 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-ink/40">
+            <h2 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-muted">
               场景快捷入口
             </h2>
             <div className="flex flex-wrap gap-2">

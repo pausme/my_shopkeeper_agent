@@ -55,14 +55,14 @@ export function Composer({
                     rows={1}
                     placeholder={placeholder ?? "继续描述你的需求..."}
                     aria-label="继续提问"
-                    className="max-h-36 min-h-11 flex-1 resize-none bg-transparent px-2 py-3 text-[15px] leading-6 text-ink outline-none placeholder:text-ink/35"
+                    className="max-h-36 min-h-11 flex-1 resize-none bg-transparent px-2 py-3 text-[15px] leading-6 text-ink outline-none placeholder:text-ink/45"
                 />
                 {/* findings N11.22：清空按钮 + 临近上限的字数提示 */}
                 {value.length > 0 && !isStreaming && (
                     <button
                         type="button"
                         onClick={() => onChange("")}
-                        className="grid h-7 w-7 shrink-0 place-items-center self-center rounded-full text-ink/35 transition hover:bg-ink/5 hover:text-ink active:scale-[0.98]"
+                        className="grid h-7 w-7 shrink-0 place-items-center self-center rounded-full text-ink/45 transition hover:bg-ink/5 hover:text-ink active:scale-[0.98]"
                         title="清空输入"
                         aria-label="清空输入"
                     >
@@ -70,7 +70,7 @@ export function Composer({
                     </button>
                 )}
                 {value.length > 420 && (
-                    <span className="shrink-0 self-center font-mono text-[11px] tabular-nums text-ink/40">
+                    <span className="shrink-0 self-center font-mono text-[11px] tabular-nums text-muted">
                         {value.length}/500
                     </span>
                 )}

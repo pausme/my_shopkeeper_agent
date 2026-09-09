@@ -4,7 +4,8 @@
  * Esc/遮罩/关闭按钮可关，焦点进入抽屉并循环，关闭后回到触发元素
  */
 import { AlertTriangle, Check, CircleCheckBig, Copy, Scale, ShoppingBag, Star, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { useDrawerFocus } from "../lib/drawerFocus";
 import { fetchProductSummary, type ProductSummary } from "../lib/shoppingApi";
 import type { RecommendedProduct } from "../types/shopping";
 
@@ -32,54 +33,18 @@ export function ProductDetailModal({
 }: ProductDetailModalProps) {
   const [summary, setSummary] = useState<ProductSummary | null>(null);
   const [error, setError] = useState("");
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  const closeRef = useRef<HTMLButtonElement | null>(null);
-  // N12.7：关闭后焦点回到触发元素
-  const triggerRef = useRef<Element | null>(null);
+  // N12.16/N12.17：统一抽屉焦点管理（Esc/遮罩/关闭按钮都恢复触发元素焦点）
+  const open = Boolean(product);
+  const { panelRef, closeRef, handleClose } = useDrawerFocus(open, onClose);
 
   useEffect(() => {
     if (!product) return;
     setSummary(null);
     setError("");
-    triggerRef.current = document.activeElement;
     fetchProductSummary(product.product_id)
       .then(setSummary)
       .catch((err) => setError(err instanceof Error ? err.message : "加载失败"));
   }, [product]);
-
-  // findings #23/N12.7：Esc 关闭 + Tab 焦点循环在抽屉内
-  useEffect(() => {
-    if (!product) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-        return;
-      }
-      if (event.key !== "Tab" || !panelRef.current) return;
-      const focusables = panelRef.current.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
-      if (focusables.length === 0) return;
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    closeRef.current?.focus();
-    return () => window.removeEventListener("keydown", onKey);
-  }, [product, onClose]);
-
-  // N12.7：关闭时焦点返回触发元素
-  const handleClose = () => {
-    (triggerRef.current as HTMLElement | null)?.focus?.();
-    onClose();
-  };
 
   if (!product) return null;
 
@@ -126,7 +91,7 @@ export function ProductDetailModal({
               </div>
               <h3 className="text-base font-semibold leading-6 text-ink">{product.title}</h3>
               {/* 数据可信信息（findings #22 / N12.7 价格来源） */}
-              <div className="mt-1.5 flex flex-wrap gap-2 text-[11px] text-ink/40">
+              <div className="mt-1.5 flex flex-wrap gap-2 text-[11px] text-muted">
                 <span className="rounded bg-subtle px-1.5 py-0.5">演示数据</span>
                 {summary?.updated_at && <span>数据更新于 {summary.updated_at}</span>}
                 {(summary?.risk.sample_size ?? 0) > 0 && (

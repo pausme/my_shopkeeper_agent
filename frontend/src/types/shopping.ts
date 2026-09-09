@@ -50,7 +50,19 @@ export type ShoppingRecommendationEvent = {
 export type ShoppingComparisonEvent = {
   type: "comparison";
   session_id: string;
-  table: { headers: string[]; rows: Array<Record<string, string>> };
+  table: {
+    headers: string[];
+    rows: Array<Record<string, string>>;
+    /** N12.18/N12.25：商品元数据（表头图/价与风险高亮），旧数据可缺省 */
+    products?: Array<{
+      product_id: string;
+      title: string;
+      image_url?: string;
+      price: number;
+      promotion_price: number | null;
+      risk_level?: string;
+    }>;
+  };
 };
 
 export type ShoppingErrorEvent = {

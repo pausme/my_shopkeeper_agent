@@ -97,7 +97,7 @@ export function FilterPanel({
         <button
           type="button"
           onClick={onClose}
-          className="text-ink/40 transition hover:text-ink"
+          className="text-muted transition hover:text-ink"
           aria-label="关闭筛选"
         >
           <X className="h-3.5 w-3.5" aria-hidden="true" />

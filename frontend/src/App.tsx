@@ -53,21 +53,34 @@ function makeId() {
   return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-// N7.2 条件胶囊：从用户输入中提取的条件
-function extractConditions(query: string): string[] {
+// N7.2/N12.20 条件胶囊：从用户原话与推荐摘要提取的条件（品类/预算/场景/偏好/排除项）
+function extractConditions(text: string): string[] {
   const conditions: string[] = [];
-  const budget = query.match(/(?:预算|以内|以内)[^\d]{0,4}(\d{2,5})/);
+  const budget = text.match(/(?:预算|以内)[^\d]{0,4}(\d{2,5})/);
   if (budget) conditions.push(`预算 ${budget[1]} 以内`);
-  const categories = ["厨房小电器", "家居生活", "数码配件", "母婴用品", "空气炸锅", "破壁机", "豆浆机", "安全座椅", "奶瓶", "辅食机", "充电宝", "耳机", "落地灯", "枕头", "按摩仪"];
+  const categories = [
+    "厨房小电器", "家居生活", "数码配件", "母婴用品", "空气炸锅", "破壁机", "豆浆机",
+    "电煮锅", "热水壶", "落地灯", "四件套", "枕头", "按摩仪", "置物架", "充电器",
+    "拓展坞", "充电宝", "手环", "鼠标", "硬盘", "耳机", "键盘", "显示器", "辅食机",
+    "安全座椅", "奶瓶", "床中床", "奶嘴", "浴巾",
+  ];
   for (const category of categories) {
-    if (query.includes(category)) {
+    if (text.includes(category)) {
       conditions.push(category);
       break;
     }
   }
-  const exclusion = query.match(/不要([^，。,.!！?？\s]{1,8})/);
+  const scenes = ["通勤", "租房", "送礼", "办公室", "宿舍", "新手", "宝宝", "长辈"];
+  for (const scene of scenes) {
+    if (text.includes(scene) && !conditions.includes(scene)) conditions.push(scene);
+  }
+  const preferences = ["好清洗", "静音", "低噪音", "降噪", "便携", "大容量", "免滤", "小巧", "护颈椎", "助睡眠"];
+  for (const preference of preferences) {
+    if (text.includes(preference) && !conditions.includes(preference)) conditions.push(preference);
+  }
+  const exclusion = text.match(/不要([^，。,.!！?？\s]{1,8})/);
   if (exclusion) conditions.push(`不要${exclusion[1]}`);
-  return conditions;
+  return conditions.slice(0, 6);
 }
 
 export default function App() {
@@ -521,12 +534,13 @@ export default function App() {
       setShoppingClarificationCount(0);
       setCompareIds([]);
       setShoppingMessages(
-        detail.messages.map((row) => {
+        detail.messages.flatMap((row) => {
           const rowWithHydration = row as {
             summary?: string;
             products?: RecommendedProduct[];
+            comparison?: NonNullable<ShoppingMessage["comparison"]>;
           };
-          return {
+          const mapped: ShoppingMessage = {
             id: row.message_id,
             role: row.role === "user" ? "user" : "assistant",
             kind:
@@ -540,6 +554,21 @@ export default function App() {
             messageId: row.message_id,
             createdAt: row.created_at ?? Date.now(),
           };
+          // N12.19：落库的对比表回放为独立 comparison 消息（管理台刷新返回/历史切换均生效）
+          if (row.message_type === "recommendation" && rowWithHydration.comparison?.rows?.length) {
+            return [
+              mapped,
+              {
+                id: `${row.message_id}-comparison`,
+                role: "assistant",
+                kind: "comparison",
+                content: "",
+                comparison: rowWithHydration.comparison,
+                createdAt: (row.created_at ?? Date.now()) + 1,
+              },
+            ];
+          }
+          return [mapped];
         }),
       );
       setView("chat");
@@ -613,9 +642,15 @@ export default function App() {
   };
 
   const streamElapsed = streamStartedAt ? Math.round((now - streamStartedAt) / 1000) : 0;
+  // N12.20：条件汇总优先吃结构化来源——最近用户原话 + 推荐摘要合并解析，
+  // 不再只依赖模型措辞（曾漏掉"预算200以内"这类纯追问）
+  const lastUserQuery = useMemo(
+    () => [...shoppingMessages].reverse().find((m) => m.role === "user")?.content ?? "",
+    [shoppingMessages],
+  );
   const conditions = useMemo(
-    () => extractConditions(lastRecommendation?.content ?? "") || [],
-    [lastRecommendation],
+    () => extractConditions(`${lastUserQuery} ${lastRecommendation?.content ?? ""}`),
+    [lastUserQuery, lastRecommendation],
   );
   const quickFollowUps = ["有没有更便宜的", "只看评分最高的", "帮我比较前两个", "帮我总结避坑要点"];
   // N8.3：筛选只作用于最新一次推荐的商品卡
@@ -702,7 +737,7 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
             <ShoppingBag className="h-4 w-4" aria-hidden="true" />
           </span>
           <span className="text-base font-bold text-ink">PickMate AI</span>
-          <span className="hidden text-xs text-ink/40 sm:inline">电商商品决策助手</span>
+          <span className="hidden text-xs text-muted sm:inline">电商商品决策助手</span>
         </button>
 
         <div className="flex items-center gap-1.5">
@@ -782,7 +817,7 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                   : shoppingSessions;
                 if (filtered.length === 0) {
                   return (
-                    <div className="px-3 py-3 text-xs text-ink/40">
+                    <div className="px-3 py-3 text-xs text-muted">
                       {shoppingSessions.length === 0 ? "暂无历史会话" : "没有匹配的会话"}
                       {shoppingSessions.length === 0 && (
                         <div className="mt-2">
@@ -815,7 +850,7 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                       <div className="truncate text-sm text-ink/80">
                         {displayTitle(session.title, session.last_query)}
                       </div>
-                      <div className="truncate text-[11px] text-ink/40">
+                      <div className="truncate text-[11px] text-muted">
                         {loadingSessionId === session.session_id
                           ? "加载中..."
                           : (session.last_query ?? "")}
@@ -861,7 +896,7 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                   <button
                     type="button"
                     onClick={() => setSettingsOpen(false)}
-                    className="text-ink/40 transition hover:text-ink"
+                    className="text-muted transition hover:text-ink"
                     aria-label="关闭设置"
                   >
                     <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -962,7 +997,7 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
           <main ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
             {shoppingMessages.length === 0 ? (
               <div className="grid h-full place-items-center gap-3">
-                <span className="text-sm text-ink/40">这里还没有对话</span>
+                <span className="text-sm text-muted">这里还没有对话</span>
                 <button
                   type="button"
                   onClick={newConsult}
@@ -1127,6 +1162,7 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                                 <ComparisonTable
                                   headers={message.comparison.headers}
                                   rows={message.comparison.rows}
+                                  products={message.comparison.products}
                                   conclusion={conclusion}
                                   onDimGroupChange={(group) => {
                                     if (!shoppingSessionId) return;
@@ -1237,7 +1273,7 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
       {/* 条件胶囊（N7.2；xl 起并入决策侧栏，此处仅窄屏显示） */}
       {view === "chat" && conditions.length > 0 && (
         <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-line bg-white px-4 py-1.5 text-[11px] xl:hidden lg:px-8">
-          <span className="text-ink/40">当前条件</span>
+          <span className="text-muted">当前条件</span>
           {conditions.map((condition) => (
             <span
               key={condition}
@@ -1254,7 +1290,7 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
       {/* 状态栏 + 输入区（N11.1/3：仅对话页显示，首页只有中部搜索一个入口） */}
       {view === "chat" && (
         <>
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-line bg-white px-4 py-1.5 text-xs text-ink/40 lg:px-8">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-line bg-white px-4 py-1.5 text-xs text-muted lg:px-8">
             <span className="shrink-0">
               {isStreaming ? `导购运行中 · 已 ${streamElapsed}s` : "就绪"}
             </span>

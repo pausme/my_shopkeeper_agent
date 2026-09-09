@@ -236,14 +236,21 @@ class ShoppingSessionRepository:
         return recommendation_id
 
     async def get_recommendation_by_message(self, message_id: str) -> dict | None:
-        """按消息 ID 查推荐结果（历史回放还原商品卡用）"""
+        """按消息 ID 查推荐结果（历史回放还原商品卡与对比表用）"""
 
         result = await self.session.execute(
-            select(ShoppingRecommendationMySQL.result_json).where(
-                ShoppingRecommendationMySQL.message_id == message_id
-            )
+            select(
+                ShoppingRecommendationMySQL.result_json,
+                ShoppingRecommendationMySQL.comparison_json,
+            ).where(ShoppingRecommendationMySQL.message_id == message_id)
         )
-        return result.scalar_one_or_none()
+        row = result.one_or_none()
+        if row is None:
+            return None
+        recommendation = dict(row.result_json or {})
+        # N12.19：对比表随推荐一起取，回放时还原 comparison 消息
+        recommendation["comparison"] = row.comparison_json or None
+        return recommendation
 
     # ---------- 偏好（二期 S1-1） ----------
 

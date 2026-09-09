@@ -73,7 +73,7 @@ export function SessionSummaryCard({
           type="button"
           onClick={onClose}
           aria-label="关闭总结"
-          className="grid h-7 w-7 place-items-center rounded-full text-ink/40 transition hover:bg-white hover:text-ink"
+          className="grid h-7 w-7 place-items-center rounded-full text-muted transition hover:bg-white hover:text-ink"
         >
           <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>

@@ -5,6 +5,7 @@
  */
 import { Database, Loader2, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useDrawerFocus } from "../lib/drawerFocus";
 import {
   deleteAdminProduct,
   fetchAlertRules,
@@ -169,7 +170,7 @@ export function AdminConsole() {
         <div className="mb-3 flex gap-2">
           <div className="relative flex-1">
             <Search
-              className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/35"
+              className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/45"
               aria-hidden="true"
             />
             <input
@@ -244,7 +245,7 @@ export function AdminConsole() {
                 </div>
               ))}
             </div>
-            <p className="mt-2 text-[11px] text-ink/40">
+            <p className="mt-2 text-[11px] text-muted">
               规则保存后由价格检查脚本下次运行时读取生效（服务器 crontab 每小时执行）。
             </p>
           </div>
@@ -269,7 +270,7 @@ export function AdminConsole() {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={9} className="px-3 py-8 text-center text-ink/40">
+                  <td colSpan={9} className="px-3 py-8 text-center text-muted">
                     加载中...
                   </td>
                 </tr>
@@ -317,7 +318,7 @@ export function AdminConsole() {
                           type="button"
                           onClick={() => void handleDelete(product.product_id)}
                           aria-label={`删除 ${product.title}`}
-                          className="rounded border border-line p-1.5 text-ink/40 transition hover:border-risk/40 hover:text-risk"
+                          className="rounded border border-line p-1.5 text-muted transition hover:border-risk/40 hover:text-risk"
                         >
                           <Trash2 className="h-3 w-3" aria-hidden="true" />
                         </button>
@@ -394,6 +395,8 @@ function EditDrawer({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // N12.17：统一抽屉焦点管理（首焦点/Esc/Tab 循环/关闭回焦）
+  const { panelRef, closeRef, handleClose } = useDrawerFocus(true, onClose);
 
   const save = async () => {
     setSaving(true);
@@ -426,12 +429,22 @@ function EditDrawer({
       className="fixed inset-0 z-50 grid justify-end bg-ink/40 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      onClick={(event) => event.target === event.currentTarget && onClose()}
+      aria-label="编辑商品"
+      onClick={(event) => event.target === event.currentTarget && handleClose()}
     >
-      <div className="h-full w-full max-w-md overflow-y-auto bg-white p-6 shadow-panel">
+      <div
+        ref={panelRef}
+        className="drawer-panel h-full w-full max-w-md overflow-y-auto rounded-l-xl3 bg-white p-6 shadow-drawer"
+      >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-semibold text-ink">编辑商品</h2>
-          <button type="button" onClick={onClose} aria-label="关闭" className="text-ink/40 hover:text-ink">
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={handleClose}
+            aria-label="关闭"
+            className="grid h-9 w-9 place-items-center rounded-full text-ink/45 transition hover:bg-soft hover:text-ink"
+          >
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
@@ -503,11 +516,11 @@ function EditDrawer({
           {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="h-4 w-4" aria-hidden="true" />}
           {saving ? "保存中..." : "保存"}
         </button>
-        <p className="mt-3 text-center text-[11px] text-ink/40">
+        <p className="mt-3 text-center text-[11px] text-muted">
           保存只写 MySQL；点顶部"一键重建索引"后对推荐生效
         </p>
 
-        <style>{`.input { width: 100%; border: 1px solid #e2e8f0; border-radius: 0.5rem; padding: 0.5rem 0.75rem; outline: none; } .input:focus { border-color: rgba(37,99,235,.5); }`}</style>
+        <style>{`.input { width: 100%; border: 1px solid #D7E0DB; border-radius: 0.5rem; padding: 0.5rem 0.75rem; outline: none; } .input:focus { border-color: rgba(31, 93, 75, 0.5); }`}</style>
       </div>
     </div>
   );
@@ -526,6 +539,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function ReviewsDrawer({ productId, onClose }: { productId: string; onClose: () => void }) {
   const [items, setItems] = useState<Array<{ review_id: string; rating: number; content: string; sentiment: string | null }>>([]);
   const [loading, setLoading] = useState(true);
+  // N12.17：统一抽屉焦点管理
+  const { panelRef, closeRef, handleClose } = useDrawerFocus(true, onClose);
 
   useEffect(() => {
     fetchProductReviews(productId)
@@ -539,17 +554,27 @@ function ReviewsDrawer({ productId, onClose }: { productId: string; onClose: () 
       className="fixed inset-0 z-50 grid justify-end bg-ink/40 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      onClick={(event) => event.target === event.currentTarget && onClose()}
+      aria-label="评价样本"
+      onClick={(event) => event.target === event.currentTarget && handleClose()}
     >
-      <div className="h-full w-full max-w-md overflow-y-auto bg-white p-6 shadow-panel">
+      <div
+        ref={panelRef}
+        className="drawer-panel h-full w-full max-w-md overflow-y-auto rounded-l-xl3 bg-white p-6 shadow-drawer"
+      >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-semibold text-ink">评价样本（{productId}）</h2>
-          <button type="button" onClick={onClose} aria-label="关闭" className="text-ink/40 hover:text-ink">
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={handleClose}
+            aria-label="关闭"
+            className="grid h-9 w-9 place-items-center rounded-full text-ink/45 transition hover:bg-soft hover:text-ink"
+          >
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
-        {loading && <p className="text-sm text-ink/40">加载中...</p>}
-        {!loading && items.length === 0 && <p className="text-sm text-ink/40">暂无评价</p>}
+        {loading && <p className="text-sm text-muted">正在加载评价样本...</p>}
+        {!loading && items.length === 0 && <p className="text-sm text-muted">暂无评价</p>}
         <div className="space-y-3">
           {items.map((review) => (
             <div key={review.review_id} className="rounded-lg border border-line p-3">

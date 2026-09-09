@@ -31,6 +31,8 @@ async def build_comparison(
         review_summary = state.get("review_summary") or {}
 
         rows = []
+        # N12.18/N12.25：商品元数据（表头图/价 + 风险最高高亮用），与维度行解耦
+        products_meta = []
         for product in ranked:
             pid = product["product_id"]
             risk = risk_summary.get(pid, {})
@@ -48,10 +50,28 @@ async def build_comparison(
                     "不适合": risk.get("not_suitable", ""),
                 }
             )
+            products_meta.append(
+                {
+                    "product_id": pid,
+                    "title": product["title"],
+                    "image_url": product.get("image_url") or "",
+                    "price": float(product.get("price") or 0),
+                    "promotion_price": (
+                        float(product["promotion_price"]) if product.get("promotion_price") else None
+                    ),
+                    "risk_level": risk.get("level", "unknown"),
+                }
+            )
 
         logger.info(f"对比表构建完成：{len(rows)} 款商品")
         writer({"type": "progress", "step": step, "status": "success"})
-        return {"comparison_table": {"headers": list(rows[0].keys()) if rows else [], "rows": rows}}
+        return {
+            "comparison_table": {
+                "headers": list(rows[0].keys()) if rows else [],
+                "rows": rows,
+                "products": products_meta,
+            }
+        }
     except Exception as e:
         logger.error(f"{step} failed: {e}")
         writer({"type": "progress", "step": step, "status": "error"})

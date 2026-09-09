@@ -4,6 +4,7 @@
  */
 import { Loader2, ShoppingBag, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useDrawerFocus } from "../lib/drawerFocus";
 import { fetchBundleRecommend } from "../lib/shoppingApi";
 import type { RecommendedProduct } from "../types/shopping";
 
@@ -46,20 +47,17 @@ export function BundleModal({
   const [bundles, setBundles] = useState<BundleGroup[] | null>(null);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
+  // N12.17：统一抽屉焦点管理（首焦点/Esc/Tab 循环/关闭回焦）
+  const { panelRef, closeRef, handleClose } = useDrawerFocus(true, onClose);
 
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
     fetchBundleRecommend(product.product_id, purchasedProductIds, sessionId)
       .then((d) => {
         setBundles(d.bundles ?? []);
         setNote(d.note ?? "");
       })
       .catch((err) => setError(err instanceof Error ? err.message : "加载失败"));
-    return () => window.removeEventListener("keydown", onKey);
-  }, [product.product_id, purchasedProductIds, sessionId, onClose]);
+  }, [product.product_id, purchasedProductIds, sessionId]);
 
   return (
     <div
@@ -67,10 +65,11 @@ export function BundleModal({
       role="dialog"
       aria-modal="true"
       aria-label="搭配购买方案"
-      onClick={(event) => event.target === event.currentTarget && onClose()}
+      onClick={(event) => event.target === event.currentTarget && handleClose()}
     >
       {/* N12.10 搭配方案抽屉：右侧打开，保持会话上下文 */}
       <div
+        ref={panelRef}
         className="drawer-panel absolute right-0 top-0 h-full w-full max-w-[440px] overflow-y-auto rounded-l-xl3 bg-white px-6 py-5 shadow-drawer"
         onClick={(event) => event.stopPropagation()}
       >
@@ -83,8 +82,9 @@ export function BundleModal({
             <p className="mt-1 text-xs text-ink/50">围绕「{product.title}」的组合与补充建议</p>
           </div>
           <button
+            ref={closeRef}
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             aria-label="关闭"
             className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-ink/45 transition hover:bg-soft hover:text-ink active:scale-[0.98]"
           >

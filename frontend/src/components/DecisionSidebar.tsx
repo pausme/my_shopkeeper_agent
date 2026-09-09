@@ -29,7 +29,7 @@ type DecisionSidebarProps = {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="rounded-xl2 border border-line bg-white p-4 shadow-card">
-      <h3 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-ink/40">
+      <h3 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
         {title}
       </h3>
       {children}
@@ -59,7 +59,7 @@ export function DecisionSidebar({
       {/* 1. 当前条件 */}
       <Section title="当前条件">
         {conditions.length === 0 ? (
-          <p className="text-xs leading-5 text-ink/40">{EMPTY_HINT}。发起咨询后，这里会汇总品类、预算、场景与排除项。</p>
+          <p className="text-xs leading-5 text-muted">{EMPTY_HINT}。发起咨询后，这里会汇总品类、预算、场景与排除项。</p>
         ) : (
           <div className="flex flex-wrap gap-1.5">
             {conditions.map((condition) => (
@@ -77,7 +77,7 @@ export function DecisionSidebar({
       {/* 2. 我的偏好 */}
       <Section title="我的偏好">
         {preferences.length === 0 ? (
-          <p className="text-xs leading-5 text-ink/40">
+          <p className="text-xs leading-5 text-muted">
             {EMPTY_HINT}。登录后系统会根据咨询记录推断偏好，也可手动维护。
           </p>
         ) : (
@@ -121,7 +121,7 @@ export function DecisionSidebar({
       {/* 3. 对比托盘（N12.8） */}
       <Section title={`对比托盘 ${compareIds.length}/4`}>
         {compareIds.length === 0 ? (
-          <p className="text-xs leading-5 text-ink/40">
+          <p className="text-xs leading-5 text-muted">
             在推荐卡或详情抽屉点「加入对比」，选 2~4 款后开始横向对比。
           </p>
         ) : (
@@ -141,7 +141,7 @@ export function DecisionSidebar({
                       type="button"
                       onClick={() => onRemoveCompare(id)}
                       aria-label={`移除 ${title}`}
-                      className="shrink-0 rounded p-1 text-ink/35 transition hover:bg-risk/10 hover:text-risk"
+                      className="shrink-0 rounded p-1 text-ink/45 transition hover:bg-risk/10 hover:text-risk"
                     >
                       <X className="h-3 w-3" aria-hidden="true" />
                     </button>

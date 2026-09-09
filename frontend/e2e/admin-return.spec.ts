@@ -10,7 +10,9 @@ const API_TOKEN = process.env.E2E_API_TOKEN ?? "";
 
 test.describe("管理台返回上下文", () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(!API_TOKEN, "需要 E2E_API_TOKEN（导购接口鉴权）");
+    // N12.24：本地缺令牌可跳过，CI 缺令牌必须失败（skipped 不得记为全套件通过）
+    test.skip(!API_TOKEN && !process.env.CI, "需要 E2E_API_TOKEN（导购接口鉴权）");
+    test.fail(!API_TOKEN && Boolean(process.env.CI), "CI 未注入 E2E_API_TOKEN，鉴权用例被静默跳过");
     await page.addInitScript(
       (token) => localStorage.setItem("shopkeeper.apiToken", token),
       API_TOKEN,

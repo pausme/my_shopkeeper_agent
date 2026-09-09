@@ -11,13 +11,13 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        // N12.2：拉丁/数字 IBM Plex Sans，中文 Chiron Hei HK（均带系统回退）
+        // N12.2/N12.23：拉丁/数字 IBM Plex Sans，中文 Chiron Hei HK；
+        // CJK 仅此一个 webfont，系统字体作回退（不保留 Google CJK）
         sans: [
           '"IBM Plex Sans"',
           '"Chiron Hei HK"',
           '"PingFang SC"',
           '"Microsoft YaHei"',
-          '"Noto Sans SC"',
           "system-ui",
           "sans-serif",
         ],
@@ -39,6 +39,7 @@ export default {
         warning: "#A96B14",
         brass: "#A96B14", // 旧谨慎/待确认色并入 ui-warning
         ink: "#18221F",
+        muted: "#53635C", // N12.22：辅助文字（浅底对比度 ≥4.5:1，替代 ink/40）
         focus: "#2F8F72",
         // 极少数历史残留 token，映射到近似新值防破
         parchment: "#F3F6F4",

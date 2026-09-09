@@ -247,6 +247,9 @@ async def shopping_session_detail(
         ids = [item.get("product_id") for item in rec.get("recommendations", [])]
         rows = await service.product_repository.get_by_product_ids(ids)
         message["summary"] = rec.get("summary") or message["content"]
+        # N12.19：落库的对比表随消息返回，前端回放时还原 comparison 消息
+        if rec.get("comparison") and rec["comparison"].get("rows"):
+            message["comparison"] = rec["comparison"]
         message["products"] = [
             {
                 "product_id": row.product_id,
