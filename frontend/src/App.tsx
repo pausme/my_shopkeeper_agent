@@ -1240,8 +1240,10 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
         </>
       )}
 
-      {/* 悬浮操作：新咨询 / 清空（在对话视图中） */}
-      {view === "chat" && shoppingMessages.length > 0 && !isStreaming && (
+      {/* 悬浮操作：新咨询 / 清空（在对话视图中）
+          N11.33 修复：对比托盘有商品时隐藏——悬浮按钮（右下角）与
+          "开始对比"按钮物理重叠，曾导致用户点到"新咨询"被带回首页 */}
+      {view === "chat" && shoppingMessages.length > 0 && !isStreaming && compareIds.length === 0 && (
         <button
           type="button"
           onClick={newConsult}

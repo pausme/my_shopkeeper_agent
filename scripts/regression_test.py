@@ -205,6 +205,63 @@ def main() -> None:
         cmp_ids = {r.get("product_id") for r in cmp_event["table"]["rows"]}
         check("对比集合来自指定商品", set(ids) == cmp_ids, f"{ids} vs {cmp_ids}")
 
+    # ---------- N11.33：显式选品不被预算/品类过滤误杀 ----------
+    cmp_events2 = post_sse(
+        {
+            "query": "帮我对比这 2 款商品，预算200以内",
+            "selected_product_ids": ["P0004", "P0005"],
+        }
+    )
+    cmp_event2 = next((e for e in cmp_events2 if e.get("type") == "comparison"), None)
+    if cmp_event2:
+        cmp_ids2 = {r.get("product_id") for r in cmp_event2["table"]["rows"]}
+        check(
+            "N11.33 超预算选品不被剔除",
+            cmp_ids2 == {"P0004", "P0005"},
+            f"P0004/P0005 vs {cmp_ids2}",
+        )
+    else:
+        check("N11.33 超预算选品不被剔除", False, "未返回对比表")
+
+    # ---------- N11.32：显式品型无货禁止相邻品类冒充 ----------
+    rec3: dict | None = None
+    history3: list[dict] = []
+    ear_query = "想买一个蓝牙耳机，预算300以内，通勤使用"
+    for rnd in range(3):
+        events3 = post_sse({"query": ear_query if rnd == 0 else "跳过", "history": history3})
+        rec3 = next((e for e in events3 if e.get("type") == "recommendation"), None)
+        if rec3:
+            break
+        cla3 = next((e for e in events3 if e.get("type") == "clarification"), None)
+        if not cla3:
+            break
+        history3 += [
+            {"role": "user", "content": ear_query},
+            {"role": "assistant", "content": cla3["question"]},
+            {"role": "user", "content": "跳过"},
+        ][-4:]
+    ear_products = (rec3 or {}).get("recommended_products") or []
+    ear_summary = (rec3 or {}).get("summary", "")
+    check(
+        "N11.32 耳机无货返回空推荐",
+        ear_products == [],
+        str([p.get("title", "")[:12] for p in ear_products]),
+    )
+    check("N11.32 空结果明示暂无品型", "暂无「耳机」" in ear_summary, ear_summary[:60])
+    relax_events = post_sse(
+        {
+            "query": "没有耳机的话，推荐最接近的品类",
+            "history": history3 + [{"role": "assistant", "content": ear_summary[:200]}],
+        }
+    )
+    relax_rec = next((e for e in relax_events if e.get("type") == "recommendation"), None)
+    relax_products = (relax_rec or {}).get("recommended_products") or []
+    check(
+        "N11.32 放宽表述解锁相近品类",
+        bool(relax_products),
+        str([p.get("title", "")[:12] for p in relax_products]),
+    )
+
     # ---------- 会话 CRUD + 越权 ----------
     code, body = request_json("GET", "/api/shopping/sessions", None, auth_headers(jwt_a))
     check("用户A会话列表", code == 200 and isinstance(body, list))

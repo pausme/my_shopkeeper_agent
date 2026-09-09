@@ -10,7 +10,7 @@ import time
 
 from langgraph.runtime import Runtime
 
-from app.agent.shopping.category_match import match_product_type
+from app.agent.shopping.category_match import match_product_type, type_in_candidate
 from app.agent.shopping.context import ShoppingAgentContext
 from app.agent.shopping.state import ShoppingAgentState
 from app.conf.app_config import app_config
@@ -69,18 +69,28 @@ async def rank_products(
             writer({"type": "progress", "step": step, "status": "success"})
             return {"ranked_products": []}
 
+        # N11.33（对比链路）：用户显式点名的商品只做如实呈现，
+        # 品型/品类/语义地板/预算/风险过滤一律不适用（曾把对比选中商品误剔除）
+        explicit_ids = list(
+            state.get("selected_product_ids") or slots.get("product_ids") or []
+        )
+        explicit = set(explicit_ids)
+
         # 品型硬约束（findings #24）：用户点名具体品型（如"空气炸锅"）时，
         # 只保留标题/属性命中该品型的商品，宁缺毋滥——绝不用相邻品类凑数
-        type_keyword = match_product_type(
-            state.get("query"), state.get("rewritten_query")
+        type_keyword = (
+            None if explicit else match_product_type(
+                state.get("query"), state.get("rewritten_query")
+            )
         )
         insufficient_note = ""
         if type_keyword:
             type_matched = [
                 c
                 for c in candidates
-                if type_keyword in (c.get("title") or "")
-                or type_keyword in str(c.get("attributes") or {})
+                if type_in_candidate(
+                    type_keyword, c.get("title") or "", str(c.get("attributes") or {})
+                )
             ]
             if type_matched:
                 candidates = type_matched
@@ -91,12 +101,22 @@ async def rank_products(
                     )
                     logger.info(f"品型约束：{type_keyword} 仅 {len(type_matched)} 款候选")
             else:
-                insufficient_note = (
-                    f"暂无「{type_keyword}」类商品，以下为最接近的同类推荐，供参考。"
-                )
+                # N11.32：显式品型无匹配时返回空推荐并明示，
+                # 不得拿相邻品类商品冒充；用户回复"没有X的话推荐最接近的"
+                # （category_match 负向识别）后才解锁相邻品类
+                logger.info(f"品型约束：{type_keyword} 无匹配候选，返回空推荐")
+                writer({"type": "progress", "step": step, "status": "success"})
+                return {
+                    "ranked_products": [],
+                    "insufficient_note": (
+                        f"暂无「{type_keyword}」类商品，已停止推荐，没有拿相近品类凑数。"
+                        f"如果你愿意看相近品类，回复「没有{type_keyword}的话，推荐最接近的品类」即可。"
+                    ),
+                }
 
         # 排除条件程序化执行（PRD 10.1）：品牌精确匹配或标题包含排除词的商品直接剔除
-        if exclusions:
+        # （显式选品对比不适用——用户点名商品时排除项来自历史轮，不应误杀）
+        if exclusions and not explicit:
             candidates = [
                 c
                 for c in candidates
@@ -108,17 +128,18 @@ async def rank_products(
                 )
             ]
 
-        # 品类硬约束：槽位明确且同品类候选充足时，跨品类商品不参与排序
+        # 品类硬约束：槽位明确且同品类候选充足时，跨品类商品不参与排序（显式选品豁免）
         category = slots.get("category")
-        if category:
+        if category and not explicit:
             same_category = [c for c in candidates if c.get("category_name") == category]
             if len(same_category) >= 3:
                 candidates = same_category
 
-        # 语义地板分：过滤明显跑题候选；过滤后不足 3 款则保留原候选
-        on_topic = [c for c in candidates if float(c.get("semantic_score", 0)) >= semantic_floor]
-        if len(on_topic) >= 3:
-            candidates = on_topic
+        # 语义地板分：过滤明显跑题候选；过滤后不足 3 款则保留原候选（显式选品豁免）
+        if not explicit:
+            on_topic = [c for c in candidates if float(c.get("semantic_score", 0)) >= semantic_floor]
+            if len(on_topic) >= 3:
+                candidates = on_topic
 
         max_sales = max((c.get("sales_30d") or 0) for c in candidates) or 1
         ranked = []
@@ -131,8 +152,8 @@ async def rank_products(
             if (candidate.get("stock") or 0) <= 0:
                 continue
 
-            # 预算硬过滤：超预算 30% 以上默认不展示（PRD 10.4）
-            if budget_max and effective_price > budget_max * 1.3:
+            # 预算硬过滤：超预算 30% 以上默认不展示（PRD 10.4；显式选品对比豁免）
+            if budget_max and not explicit and effective_price > budget_max * 1.3:
                 continue
 
             # 预算契合：到手价不超预算满分；超预算但未达硬过滤线的做标记（PRD 10.4 显式标记）
@@ -154,15 +175,23 @@ async def rank_products(
                 {**candidate, "final_score": round(score, 4), "budget_exceeded": budget_exceeded}
             )
 
-        # 风险拦截：存在非高风险候选时，剔除高风险商品（M5.2）
-        non_high = [c for c in ranked if risk_summary.get(c["product_id"], {}).get("level") != "high"]
-        pool = non_high if non_high else ranked
+        # 风险拦截：存在非高风险候选时，剔除高风险商品（M5.2；显式选品对比豁免——
+        # 用户点名要对比的商品如实呈现，靠"谨慎购买"结论与风险提示兜底）
+        if explicit:
+            pool = ranked
+        else:
+            non_high = [c for c in ranked if risk_summary.get(c["product_id"], {}).get("level") != "high"]
+            pool = non_high if non_high else ranked
         pool.sort(key=lambda c: c["final_score"], reverse=True)
-        # 预算内候选充足时不再保留略超预算商品（超预算展示仅在预算内池太薄时兜底）
-        if budget_max:
+        # 预算内候选充足时不再保留略超预算商品（超预算展示仅在预算内池太薄时兜底；显式选品豁免）
+        if budget_max and not explicit:
             in_budget = [c for c in pool if not c.get("budget_exceeded")]
             if len(in_budget) >= 3:
                 pool = in_budget
+        if explicit:
+            # 对比场景保持用户的选品顺序（SQL IN 查询不保序）
+            order = {pid: i for i, pid in enumerate(explicit_ids)}
+            pool.sort(key=lambda c: order.get(c["product_id"], 99))
         ranked_products = pool[:top_k]
 
         # 推荐结论（PRD 10.5）：确定性标注，LLM 与前端直接使用
