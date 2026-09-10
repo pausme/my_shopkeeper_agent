@@ -55,7 +55,8 @@ export function ShoppingHome({ sessions, onSubmit, onOpenSession, isStreaming }:
 
   const submit = () => {
     const query = draft.trim();
-    if (query && !isStreaming) onSubmit(query);
+    // N12.31：提交前二次校验长度（防粘贴/IME/程序化填充绕过原生 maxlength）
+    if (query && query.length <= 500 && !isStreaming) onSubmit(query);
   };
 
   return (
@@ -79,7 +80,8 @@ export function ShoppingHome({ sessions, onSubmit, onOpenSession, isStreaming }:
           <div className="mt-6 rounded-xl2 border border-line bg-white p-2 shadow-card focus-within:border-primary/60">
             <input
               value={draft}
-              onChange={(event) => setDraft(event.target.value)}
+              // N12.31：onChange 层截断，状态层兜底（浏览器差异绕过 maxlength 时）
+              onChange={(event) => setDraft(event.target.value.slice(0, 500))}
               onKeyDown={(event) => event.key === "Enter" && submit()}
               placeholder="描述你的购买需求，例如：想买个空气炸锅预算 500..."
               disabled={Boolean(isStreaming)}

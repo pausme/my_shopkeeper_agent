@@ -53,33 +53,53 @@ function makeId() {
   return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-// N7.2/N12.20 条件胶囊：从用户原话与推荐摘要提取的条件（品类/预算/场景/偏好/排除项）
-function extractConditions(text: string): string[] {
+// N7.2/N12.20/N12.28 条件提取词表
+const CONDITION_CATEGORIES = [
+  "厨房小电器", "家居生活", "数码配件", "母婴用品", "空气炸锅", "破壁机", "豆浆机",
+  "电煮锅", "热水壶", "落地灯", "四件套", "枕头", "按摩仪", "置物架", "充电器",
+  "拓展坞", "充电宝", "手环", "鼠标", "硬盘", "耳机", "键盘", "显示器", "辅食机",
+  "安全座椅", "奶瓶", "床中床", "奶嘴", "浴巾",
+];
+const CONDITION_SCENES = ["通勤", "租房", "送礼", "办公室", "宿舍", "新手", "宝宝", "长辈"];
+const CONDITION_PREFERENCES = ["好清洗", "静音", "低噪音", "降噪", "便携", "大容量", "免滤", "小巧", "护颈椎", "助睡眠"];
+
+// N12.28：会话级条件累积——全部用户消息按字段"最新优先"合并，
+// 预算/品类/排除项取最近一次提及（换话题自然覆盖），场景/偏好全会话累积。
+// 修复：显式对比轮（query="帮我对比这 2 款商品"）曾把首轮预算挤丢。
+function sessionConditions(messages: ShoppingMessage[], lastSummary: string): string[] {
+  const userTexts = messages.filter((m) => m.role === "user").map((m) => m.content);
+  const latestFirst = [...userTexts].reverse();
   const conditions: string[] = [];
-  const budget = text.match(/(?:预算|以内)[^\d]{0,4}(\d{2,5})/);
-  if (budget) conditions.push(`预算 ${budget[1]} 以内`);
-  const categories = [
-    "厨房小电器", "家居生活", "数码配件", "母婴用品", "空气炸锅", "破壁机", "豆浆机",
-    "电煮锅", "热水壶", "落地灯", "四件套", "枕头", "按摩仪", "置物架", "充电器",
-    "拓展坞", "充电宝", "手环", "鼠标", "硬盘", "耳机", "键盘", "显示器", "辅食机",
-    "安全座椅", "奶瓶", "床中床", "奶嘴", "浴巾",
-  ];
-  for (const category of categories) {
-    if (text.includes(category)) {
-      conditions.push(category);
+
+  for (const text of latestFirst) {
+    const budget = text.match(/(?:预算|以内)[^\d]{0,4}(\d{2,5})/);
+    if (budget) {
+      conditions.push(`预算 ${budget[1]} 以内`);
       break;
     }
   }
-  const scenes = ["通勤", "租房", "送礼", "办公室", "宿舍", "新手", "宝宝", "长辈"];
-  for (const scene of scenes) {
-    if (text.includes(scene) && !conditions.includes(scene)) conditions.push(scene);
+  categoryLoop: for (const text of latestFirst) {
+    for (const category of CONDITION_CATEGORIES) {
+      if (text.includes(category)) {
+        conditions.push(category);
+        break categoryLoop;
+      }
+    }
   }
-  const preferences = ["好清洗", "静音", "低噪音", "降噪", "便携", "大容量", "免滤", "小巧", "护颈椎", "助睡眠"];
-  for (const preference of preferences) {
-    if (text.includes(preference) && !conditions.includes(preference)) conditions.push(preference);
+  const joined = `${userTexts.join(" ")} ${lastSummary}`;
+  for (const scene of CONDITION_SCENES) {
+    if (joined.includes(scene) && !conditions.includes(scene)) conditions.push(scene);
   }
-  const exclusion = text.match(/不要([^，。,.!！?？\s]{1,8})/);
-  if (exclusion) conditions.push(`不要${exclusion[1]}`);
+  for (const preference of CONDITION_PREFERENCES) {
+    if (joined.includes(preference) && !conditions.includes(preference)) conditions.push(preference);
+  }
+  for (const text of latestFirst) {
+    const exclusion = text.match(/不要([^，。,.!！?？\s]{1,8})/);
+    if (exclusion) {
+      conditions.push(`不要${exclusion[1]}`);
+      break;
+    }
+  }
   return conditions.slice(0, 6);
 }
 
@@ -642,15 +662,11 @@ export default function App() {
   };
 
   const streamElapsed = streamStartedAt ? Math.round((now - streamStartedAt) / 1000) : 0;
-  // N12.20：条件汇总优先吃结构化来源——最近用户原话 + 推荐摘要合并解析，
-  // 不再只依赖模型措辞（曾漏掉"预算200以内"这类纯追问）
-  const lastUserQuery = useMemo(
-    () => [...shoppingMessages].reverse().find((m) => m.role === "user")?.content ?? "",
-    [shoppingMessages],
-  );
+  // N12.20/N12.28：条件汇总吃会话级累积（用户消息最新优先 + 推荐摘要），
+  // 对比/追问轮不丢首轮条件
   const conditions = useMemo(
-    () => extractConditions(`${lastUserQuery} ${lastRecommendation?.content ?? ""}`),
-    [lastUserQuery, lastRecommendation],
+    () => sessionConditions(shoppingMessages, lastRecommendation?.content ?? ""),
+    [shoppingMessages, lastRecommendation],
   );
   const quickFollowUps = ["有没有更便宜的", "只看评分最高的", "帮我比较前两个", "帮我总结避坑要点"];
   // N8.3：筛选只作用于最新一次推荐的商品卡
@@ -698,6 +714,7 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
           onClose={() => setBundleProduct(null)}
           onFollowUp={(question) => {
             setBundleProduct(null);
+            setDetailProduct(null);
             void startShoppingQuery(question);
           }}
         />
@@ -713,7 +730,8 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
               .flatMap((m) => m.products ?? [])
               .find((p) => p.product_id === productId);
             if (target) {
-              setDetailProduct(null);
+              // N12.27：详情抽屉保持挂载（搭配购在上层），关闭搭配购后
+              // 焦点能回到「查看搭配购」入口，而不是落到 body
               setBundleProduct(target);
             }
           }}

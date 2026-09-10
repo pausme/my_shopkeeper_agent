@@ -59,6 +59,51 @@ test.describe("对比流程与品型无货", () => {
     // 对比表出现且仍停留在对话页（未回首页）
     await expect(page.getByText("商品横向对比").first()).toBeVisible({ timeout: 180_000 });
     await expect(page.getByRole("heading", { name: "买什么，先把条件说清楚" })).toBeHidden();
+
+    // N12.28：显式对比轮不丢首轮条件（侧栏 ≥1280 可见）
+    if ((page.viewportSize()?.width ?? 0) >= 1280) {
+      await expect(page.getByText("预算 300 以内").first()).toBeVisible({ timeout: 10_000 });
+    }
+  });
+
+  test("嵌套抽屉键盘流转：详情 → 搭配购 → Esc 逐层返回（N12.27）", async ({ page }) => {
+    test.setTimeout(300_000);
+    await page.goto("/");
+
+    await page.getByPlaceholder(/描述你的购买需求/).fill("推荐几个厨房小电器，预算300以内，好清洗");
+    await page.getByPlaceholder(/描述你的购买需求/).press("Enter");
+
+    for (let round = 0; round < 4; round++) {
+      if (await visible(page.locator("article").first(), 60_000)) break;
+      for (const opt of ["好清洗", "跳过"]) {
+        if (await visible(page.getByRole("button", { name: opt, exact: true }), 10_000)) {
+          await page.getByRole("button", { name: opt, exact: true }).click();
+          break;
+        }
+      }
+    }
+    await expect(page.locator("article").first()).toBeVisible({ timeout: 120_000 });
+
+    const detailButton = page.locator("article").first().getByRole("button", { name: "查看详情" });
+    await detailButton.click();
+    const detailDialog = page.getByRole("dialog", { name: /的证据详情/ });
+    await expect(detailDialog).toBeVisible({ timeout: 15_000 });
+
+    const bundleButton = page.getByRole("button", { name: "查看搭配购" });
+    await bundleButton.click();
+    const bundleDialog = page.getByRole("dialog", { name: "搭配购买方案" });
+    await expect(bundleDialog).toBeVisible({ timeout: 15_000 });
+
+    // Esc 只关最上层（搭配购）：详情仍在，焦点回到「查看搭配购」入口
+    await page.keyboard.press("Escape");
+    await expect(bundleDialog).toBeHidden();
+    await expect(detailDialog).toBeVisible();
+    await expect(bundleButton).toBeFocused();
+
+    // 再 Esc 关详情：焦点回到「查看详情」触发按钮
+    await page.keyboard.press("Escape");
+    await expect(detailDialog).toBeHidden();
+    await expect(detailButton).toBeFocused();
   });
 
   test("蓝牙耳机无货：空推荐并明示暂无品型（N11.32）", async ({ page }) => {

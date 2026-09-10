@@ -61,7 +61,7 @@ export function BundleModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-ink/40 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] bg-ink/40 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label="搭配购买方案"

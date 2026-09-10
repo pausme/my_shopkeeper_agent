@@ -48,9 +48,9 @@ export function Composer({
                 <textarea
                     ref={textareaRef}
                     value={value}
-                    // findings N11.22：与后端 500 上限一致，前端提前拦截避免 422
+                    // findings N11.22/N12.31：状态层同步截断，绕过原生 maxlength 的输入不进状态
                     maxLength={500}
-                    onChange={(event) => onChange(event.target.value)}
+                    onChange={(event) => onChange(event.target.value.slice(0, 500))}
                     onKeyDown={onKeyDown}
                     rows={1}
                     placeholder={placeholder ?? "继续描述你的需求..."}

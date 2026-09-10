@@ -62,7 +62,18 @@ export function ComparisonTable({
   const [dims, setDims] = useState<string[]>([]);
   const [dimGroup, setDimGroup] = useState("all");
 
-  const hasMeta = Boolean(products && products.length > 0);
+  // N12.30：存量对比表（上线前落库，无 products 元数据）从行数据合成表头元数据，
+  // 保证新旧记录 UI 一致（缩略图回退品类字块，价格取自到手价行）
+  const effectiveProducts: CompareProductMeta[] =
+    products && products.length
+      ? products
+      : rows.map((row, index) => ({
+          product_id: row.product_id ?? String(index),
+          title: row["商品"] || `商品${index + 1}`,
+          price: parseFloat((row["到手价"] ?? "").replace(/[^\d.]/g, "")) || 0,
+          promotion_price: null,
+        }));
+  const hasMeta = effectiveProducts.length > 0;
 
   useEffect(() => {
     const ordered = [
@@ -86,16 +97,34 @@ export function ComparisonTable({
     rows[0],
   )?.product_id;
 
-  // N12.25：风险最高（medium 及以上才高亮；并列全部标出）
-  const productsById = new Map((products ?? []).map((p) => [p.product_id, p]));
-  const maxRisk = Math.max(...(products ?? []).map((p) => RISK_WEIGHT[p.risk_level ?? "unknown"] ?? 0), 0);
-  const highestRiskIds = new Set(
+  // N12.25：风险最高（medium 及以上才按等级高亮；并列全部标出）
+  const productsById = new Map(effectiveProducts.map((p) => [p.product_id, p]));
+  const maxRisk = Math.max(
+    ...effectiveProducts.map((p) => RISK_WEIGHT[p.risk_level ?? "unknown"] ?? 0),
+    0,
+  );
+  let highestRiskIds = new Set(
     maxRisk >= 2
-      ? (products ?? [])
+      ? effectiveProducts
           .filter((p) => (RISK_WEIGHT[p.risk_level ?? "unknown"] ?? 0) === maxRisk)
           .map((p) => p.product_id)
       : [],
   );
+  // N12.29：等级不足以区分（全部 low/unknown）时，从风险行文本的差评百分比
+  // 兜底解析最高者（如 4% vs 12% 高亮 12%）；无百分比或并列低值不高亮
+  if (highestRiskIds.size === 0) {
+    const percentOf = (row: Record<string, string>) => {
+      const match = (row["风险提示"] ?? "").match(/(\d+(?:\.\d+)?)\s*%/);
+      return match ? parseFloat(match[1]) : -1;
+    };
+    const percents = rows.map((row) => ({ id: row.product_id ?? "", pct: percentOf(row) }));
+    const maxPercent = Math.max(...percents.map((p) => p.pct));
+    if (maxPercent > 0) {
+      highestRiskIds = new Set(
+        percents.filter((p) => p.pct === maxPercent).map((p) => p.id),
+      );
+    }
+  }
 
   // N12.18：表头已固定到手价，数据行不再重复展示（CSV 导出仍保留完整维度）
   const visibleDims = hasMeta ? dims.filter((d) => d !== "到手价") : dims;
