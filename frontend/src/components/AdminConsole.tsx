@@ -27,6 +27,8 @@ export function AdminConsole() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // N12.33：401/403 时展示明确的无权限空态（替代半可用的管理界面）
+  const [deniedMessage, setDeniedMessage] = useState("");
   const [editing, setEditing] = useState<AdminProduct | null>(null);
   const [reviewsFor, setReviewsFor] = useState<string | null>(null);
   const [rebuilding, setRebuilding] = useState(false);
@@ -41,6 +43,15 @@ export function AdminConsole() {
       setItems(data.items);
       setTotal(data.total);
     } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status === 401 || status === 403) {
+        setDeniedMessage(
+          status === 401
+            ? "需要先登录管理员账号才能使用商品数据管理台。"
+            : "你没有商品数据管理权限，请切换管理员账号后再进入。",
+        );
+        return;
+      }
       setError(err instanceof Error ? err.message : "加载失败");
     } finally {
       setLoading(false);
@@ -102,6 +113,25 @@ export function AdminConsole() {
   };
 
   const totalPages = Math.max(1, Math.ceil(total / 20));
+
+  // N12.33：无权限空态——不渲染任何管理操作，只说明原因并提供返回
+  if (deniedMessage) {
+    return (
+      <div className="grid min-h-dvh place-items-center bg-subtle p-6">
+        <div className="max-w-md rounded-xl2 border border-line bg-white p-8 text-center shadow-card">
+          <Database className="mx-auto h-8 w-8 text-muted" aria-hidden="true" />
+          <h1 className="mt-3 text-base font-semibold text-ink">商品数据管理台</h1>
+          <p className="mt-2 text-sm leading-6 text-muted">{deniedMessage}</p>
+          <a
+            href="#/"
+            className="mt-5 inline-flex h-10 items-center rounded-lg bg-primary px-5 text-sm font-semibold text-white transition hover:bg-primary-dark active:scale-[0.98]"
+          >
+            返回导购
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-dvh bg-subtle p-6">

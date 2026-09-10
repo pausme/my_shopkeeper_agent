@@ -30,10 +30,26 @@ from app.repositories.es.review_es_repository import ReviewESRepository
 from app.repositories.mysql.meta.product_repository import ProductRepository
 from app.repositories.mysql.meta.user_mysql_repository import UserMySQLRepository
 from app.repositories.qdrant.product_qdrant_repository import ProductQdrantRepository
-from app.services.admin_service import require_admin
+from app.services.admin_service import is_admin, require_admin
 from app.services.auth_service import verify_token
 
 admin_router = APIRouter(prefix="/api/admin")
+
+
+@admin_router.get("/whoami")
+async def admin_whoami(
+    authorization: Annotated[str | None, Header()] = None,
+    session: Annotated[AsyncSession, Depends(get_meta_session)] = None,
+):
+    """当前登录身份是否管理员（N12.33：前端据此隐藏管理台入口；不抛 403）"""
+
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return {"admin": False, "username": ""}
+    payload = verify_token(authorization.split(" ", 1)[1].strip())
+    if payload is None:
+        return {"admin": False, "username": ""}
+    username = payload.get("username", "")
+    return {"admin": await is_admin(username, UserMySQLRepository(session)), "username": username}
 
 
 async def get_admin_user(

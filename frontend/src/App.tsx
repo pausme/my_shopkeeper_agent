@@ -34,6 +34,7 @@ import { ProductDetailModal } from "./components/ProductDetailModal";
 import { ShoppingHome } from "./components/ShoppingHome";
 import { SkeletonCards } from "./components/SkeletonCards";
 import { cn } from "./lib/format";
+import { fetchAdminWhoami } from "./lib/adminApi";
 import {
   deleteShoppingSessionRemote,
   stopShoppingSession,
@@ -51,6 +52,12 @@ import type { RecommendedProduct, ShoppingEvent, ShoppingMessage, ShoppingSessio
 
 function makeId() {
   return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+// N12.32：存量落库文案兜底——清洗 ID 删除后遗留的孤立"是/为"
+// （"： 是九阳…"），规则要求标点与"是"之间存在空白，正常中文（"是因为"）不受影响
+function cleanConclusionText(text: string): string {
+  return text.replace(/([：:，,])\s+(?:是|为)\s*(?=\S)/g, "$1");
 }
 
 // N7.2/N12.20/N12.28 条件提取词表
@@ -138,6 +145,8 @@ export default function App() {
   const [bundleProduct, setBundleProduct] = useState<RecommendedProduct | null>(null);
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [sessionLoadError, setSessionLoadError] = useState("");
+  // N12.33：登录身份是否管理员（设置面板管理台入口仅对管理员可见）
+  const [isAdminUser, setIsAdminUser] = useState(false);
   // 二期 S2：已关注商品 ID 集合 + 最近降价提醒（关注列表接口一并返回）
   const [watchedIds, setWatchedIds] = useState<string[]>([]);
   const [recentAlerts, setRecentAlerts] = useState<
@@ -198,6 +207,14 @@ export default function App() {
     } else {
       setWatchedIds([]);
       setRecentAlerts([]);
+    }
+    // N12.33：登录后查询管理员身份（无令牌/查询失败按非管理员处理）
+    if (jwt) {
+      fetchAdminWhoami()
+        .then((d) => setIsAdminUser(Boolean(d.admin)))
+        .catch(() => setIsAdminUser(false));
+    } else {
+      setIsAdminUser(false);
     }
   }, [jwt]);
 
@@ -949,7 +966,7 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                     )}
                   </div>
                 )}
-                {jwt && (
+                {jwt && isAdminUser && (
                   <a
                     href="#/admin"
                     className="mb-3 block w-full rounded-lg border border-line px-3 py-2 text-center text-sm text-ink/70 transition hover:border-primary/40 hover:text-primary"
@@ -1036,9 +1053,11 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
                 {shoppingMessages.map((message, index) => {
                   const isComparison = message.kind === "comparison";
                   const conclusion = isComparison
-                    ? [...shoppingMessages.slice(0, index)]
-                        .reverse()
-                        .find((m) => m.kind === "recommendation")?.content
+                    ? cleanConclusionText(
+                        [...shoppingMessages.slice(0, index)]
+                          .reverse()
+                          .find((m) => m.kind === "recommendation")?.content ?? "",
+                      )
                     : undefined;
                   return (
                     <div key={message.id}>
@@ -1133,7 +1152,9 @@ function displayTitle(title: string | null | undefined, fallback: string | null 
 
                               {message.kind === "recommendation" && (
                                 <div>
-                                  <p className="text-[15px] leading-7 text-ink">{message.content}</p>
+                                  <p className="text-[15px] leading-7 text-ink">
+                                    {cleanConclusionText(message.content)}
+                                  </p>
                                   {message.products && message.products.length > 0 && (
                                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                                       {(message.id === lastRecommendationId

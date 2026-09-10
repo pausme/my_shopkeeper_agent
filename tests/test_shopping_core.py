@@ -33,6 +33,21 @@ def test_visible_recommendation_text_strips_internal_ids():
     assert "500元内" in text
 
 
+def test_sanitize_strips_connector_after_internal_id():
+    """N12.32：LLM 用"P0002 是九阳豆浆机"句式时，删 ID 不得遗留孤立"是" """
+
+    from app.agent.shopping.nodes.generate_recommendation import sanitize_visible_text
+
+    text = sanitize_visible_text(
+        "这两款商品其实不是同一类：P0002 是九阳迷你豆浆机，P0004 是小熊恒温电热水壶，建议分开考虑。",
+        {"P0002", "P0004"},
+    )
+    assert "P0002" not in text and "P0004" not in text
+    assert " 是" not in text
+    assert "九阳迷你豆浆机" in text
+    assert "小熊恒温电热水壶" in text
+
+
 def test_shopping_eval_dataset_valid():
     """评测集结构完整：id 唯一、必填字段齐全、品类合法"""
 

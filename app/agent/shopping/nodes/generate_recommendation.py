@@ -22,11 +22,25 @@ GENERIC_PRODUCT_ID_PATTERN = re.compile(r"(?<![A-Za-z0-9_])P\d{3,}(?![A-Za-z0-9_
 
 
 def sanitize_visible_text(text: object, product_ids: set[str] | None = None) -> str:
-    """移除用户可见文案中的内部商品编号，保留接口结构里的 product_id。"""
+    """移除用户可见文案中的内部商品编号，保留接口结构里的 product_id。
+
+    N12.32：LLM 偶发用"P0002 是九阳豆浆机"句式介绍商品，直接删 ID 会留下
+    孤立的"是"（"： 是九阳…"）——ID 后紧跟连接词（是/为/：/:）时一并清除。
+    """
 
     cleaned = str(text or "")
     for product_id in sorted(product_ids or set(), key=len, reverse=True):
+        cleaned = re.sub(
+            re.escape(product_id) + r"\s*(?:是|为|：|:)\s*",
+            "",
+            cleaned,
+        )
         cleaned = cleaned.replace(product_id, "")
+    cleaned = re.sub(
+        GENERIC_PRODUCT_ID_PATTERN.pattern + r"\s*(?:是|为|：|:)\s*",
+        "",
+        cleaned,
+    )
     cleaned = GENERIC_PRODUCT_ID_PATTERN.sub("", cleaned)
     cleaned = re.sub(r"\s{2,}", " ", cleaned)
     cleaned = re.sub(r"（\s*）|\(\s*\)", "", cleaned)

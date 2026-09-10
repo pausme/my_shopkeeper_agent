@@ -16,14 +16,21 @@ from app.repositories.mysql.meta.user_mysql_repository import UserMySQLRepositor
 async def require_admin(username: str, user_repository: UserMySQLRepository) -> None:
     """校验用户名是否管理员，非管理员统一 403（不暴露是否存在）"""
 
+    if not await is_admin(username, user_repository):
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+
+
+async def is_admin(username: str | None, user_repository: UserMySQLRepository) -> bool:
+    """非抛错版管理员判定（N12.33 whoami 用：前端据此隐藏管理台入口）"""
+
+    if not username:
+        return False
     admins = {
         item.strip()
         for item in os.getenv("ADMIN_USERS", "").split(",")
         if item.strip()
     }
     if not admins or username not in admins:
-        raise HTTPException(status_code=403, detail="需要管理员权限")
+        return False
     # 用户必须真实存在（防止管理员名单与账号体系漂移）
-    user = await user_repository.get_by_username(username)
-    if user is None:
-        raise HTTPException(status_code=403, detail="需要管理员权限")
+    return await user_repository.get_by_username(username) is not None

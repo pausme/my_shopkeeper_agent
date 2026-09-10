@@ -98,6 +98,11 @@ export type AlertRule = {
   end?: string;
 };
 
+/** N12.33：当前登录身份是否管理员（设置面板据此隐藏管理台入口） */
+export function fetchAdminWhoami(): Promise<{ admin: boolean; username: string }> {
+  return requestJson("/api/admin/whoami");
+}
+
 export function fetchAlertRules(): Promise<{ items: AlertRule[] }> {
   return requestJson("/api/admin/alert-rules");
 }

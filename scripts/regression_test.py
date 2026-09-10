@@ -102,6 +102,12 @@ def main() -> None:
     code, body = request_json("POST", "/api/auth/login", {"username": user_a, "password": "wrong"})
     check("错误密码 401", code == 401, f"HTTP {code}")
 
+    # ---------- N12.33：管理台身份探测不抛错 ----------
+    code, body = request_json("GET", "/api/admin/whoami", None, auth_headers(jwt_a))
+    check("管理台 whoami 非管理员", code == 200 and body.get("admin") is False, f"HTTP {code} {body}")
+    code, body = request_json("GET", "/api/admin/whoami", None, {"X-API-Token": TOKEN})
+    check("管理台 whoami 未登录", code == 200 and body.get("admin") is False, f"HTTP {code}")
+
     # ---------- 鉴权 ----------
     code, _ = request_json("POST", "/api/shopping/query", {"query": "测试"})
     check("无凭证访问导购 401", code == 401, f"HTTP {code}")
