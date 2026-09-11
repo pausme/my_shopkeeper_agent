@@ -308,7 +308,11 @@ export default function App() {
 
     const controller = new AbortController();
     setActiveController(controller);
-    setStreamStartedAt(Date.now());
+    // N12.34：计时起点与 now 同步刷新——now 若停留在页面加载时刻，
+    // 首个进度事件前 now - streamStartedAt 会是负数（曾显示"已 -980s"）
+    const startedAt = Date.now();
+    setNow(startedAt);
+    setStreamStartedAt(startedAt);
     setDraft("");
     setView("chat");
     // findings #11：跳过类应答给出"沿用上一轮需求"的显式反馈
@@ -425,13 +429,34 @@ export default function App() {
       if (errorStatus === 401) {
         setSettingsOpen(true);
       }
+      // N12.35：按错误状态给可行动文案，不再统一套"无法连接导购接口。"
+      // 外壳（曾与详细原因拼接出"。："重复标点，且 401 被误述为连接失败）
+      let failureText: string;
+      if (isAbort) {
+        failureText = "已停止本次导购。";
+      } else if (errorStatus === 401) {
+        failureText = "导购权限未通过：请在右上角「设置」里登录，或配置访问令牌后重试。";
+      } else if (errorStatus === 429) {
+        failureText = "请求太频繁了，请休息一分钟再试。";
+      } else if (errorStatus != null && errorStatus >= 500) {
+        failureText = "导购服务暂时不可用，请稍后重试。";
+      } else if (errorStatus != null) {
+        failureText = `导购接口请求失败（HTTP ${errorStatus}），请重试。`;
+      } else {
+        failureText = "网络连接失败，请检查网络后重试。";
+      }
+      const errorDetail = isAbort ? undefined : error instanceof Error ? error.message : String(error);
       patchLastShoppingAssistant((message) =>
         message.kind === "progress"
           ? {
               ...message,
               kind: "error",
-              content: isAbort ? "已停止本次导购。" : "无法连接导购接口。",
-              error: isAbort ? undefined : error instanceof Error ? error.message : String(error),
+              // 详细原因仅在与主文案不同时补充展示，避免重复拼接
+              content: failureText,
+              error:
+                errorDetail && !failureText.includes(errorDetail.slice(0, 12))
+                  ? errorDetail
+                  : undefined,
             }
           : message,
       );
@@ -678,7 +703,8 @@ export default function App() {
     setView("home");
   };
 
-  const streamElapsed = streamStartedAt ? Math.round((now - streamStartedAt) / 1000) : 0;
+  // N12.34：Math.max(0) 兜底，计时只增不减
+  const streamElapsed = streamStartedAt ? Math.max(0, Math.round((now - streamStartedAt) / 1000)) : 0;
   // N12.20/N12.28：条件汇总吃会话级累积（用户消息最新优先 + 推荐摘要），
   // 对比/追问轮不丢首轮条件
   const conditions = useMemo(
